@@ -17,7 +17,7 @@
     const q = VG.norm(state.q), qd = VG.digits(state.q);
     return S().list('clientes')
       .filter((c) => !state.status || (c.status || 'ativo') === state.status)
-      .filter((c) => !q || VG.norm([c.codigo, c.nome, c.email, c.cidade, c.bairro].join(' ')).includes(q) || (qd.length >= 3 && (VG.digits(c.cpf_cnpj).includes(qd) || VG.digits(c.telefone).includes(qd))))
+      .filter((c) => !q || VG.norm([c.codigo, c.nome, c.email, c.cidade, c.bairro, c.endereco, c.cpf_cnpj ? '' : 'sem documento'].join(' ')).includes(q) || (qd.length >= 3 && (VG.digits(c.cpf_cnpj).includes(qd) || VG.digits(c.telefone).includes(qd))))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
@@ -43,14 +43,16 @@
       </div>`;
     VG.$('#cl-new', el).onclick = () => form(null, () => table(el));
     VG.$('#cl-import', el).onclick = () => importar(() => table(el));
-    VG.$('#cl-q', el).addEventListener('input', VG.debounce((e) => { state.q = e.target.value; table(el); }, 200));
+    VG.$('#cl-q', el).addEventListener('input', VG.debounce((e) => { state.q = e.target.value; state.limite = 100; table(el); }, 200));
     VG.$('#cl-st', el).onchange = (e) => { state.status = e.target.value; table(el); };
     table(el);
   }
 
   function table(el) {
     const box = VG.$('#cl-table', el);
-    const list = filtrados();
+    const todos = filtrados();
+    const limite = state.limite || 100;
+    const list = todos.slice(0, limite);
     const total = S().list('clientes').length;
     if (!list.length) {
       box.innerHTML = total
@@ -65,8 +67,8 @@
         <tbody>${list.map((c) => `
           <tr data-id="${c.id}">
             <td data-label="Código" class="num">${VG.esc(c.codigo)}</td>
-            <td data-label="Nome" class="strong">${VG.esc(c.nome)}</td>
-            <td data-label="CPF/CNPJ">${VG.esc(VG.fmtDoc(c.cpf_cnpj))}</td>
+            <td data-label="Nome"><span class="strong">${VG.esc(c.nome)}</span><span class="sub">${VG.esc([[c.endereco, c.numero].filter(Boolean).join(', '), c.bairro].filter(Boolean).join(' · '))}</span></td>
+            <td data-label="CPF/CNPJ">${c.cpf_cnpj ? VG.esc(VG.fmtDoc(c.cpf_cnpj)) : '<span class="badge badge--yellow"><i></i>Sem documento</span>'}</td>
             <td data-label="Telefone">${VG.esc(VG.fmtPhone(c.telefone))}</td>
             <td data-label="E-mail">${VG.esc(c.email || '—')}</td>
             <td data-label="Cidade">${VG.esc([c.cidade, c.estado].filter(Boolean).join(' - ') || '—')}</td>
@@ -78,7 +80,9 @@
             </div></td>
           </tr>`).join('')}</tbody>
       </table></div>
-      <div class="table-foot"><span>${list.length} de ${total} clientes</span></div>`;
+      <div class="table-foot"><span>Mostrando ${list.length} de ${todos.length}${todos.length !== total ? ` (${total} no total)` : ''} clientes</span>
+        ${todos.length > list.length ? `<button class="btn btn-sm" id="cl-mais">${VG.icon('plus')}<span>Mostrar mais ${Math.min(100, todos.length - list.length)}</span></button>` : ''}</div>`;
+    const mais = VG.$('#cl-mais', box); if (mais) mais.onclick = () => { state.limite = limite + 100; table(el); };
     box.querySelectorAll('tr[data-id]').forEach((tr) => {
       const id = tr.dataset.id;
       tr.querySelector('[data-act=view]').onclick = () => ver(id);
@@ -125,7 +129,7 @@
         <form id="cf" class="grid grid-4" novalidate>
           ${f('codigo', 'Código', {})}
           ${f('nome', 'Nome / Razão social', { req: true, cls: 'span-3', attrs: 'autocomplete="organization"' })}
-          ${f('cpf_cnpj', 'CPF/CNPJ', { req: true, value: VG.fmtDoc(c.cpf_cnpj), attrs: 'data-mask="doc" inputmode="numeric"' })}
+          ${f('cpf_cnpj', 'CPF/CNPJ', { value: VG.fmtDoc(c.cpf_cnpj), attrs: 'data-mask="doc" inputmode="numeric"' })}
           ${f('telefone', 'Telefone', { value: VG.fmtPhone(c.telefone), attrs: 'data-mask="phone" inputmode="tel"' })}
           ${f('email', 'E-mail', { cls: 'span-2', attrs: 'type="email" inputmode="email"' })}
           ${f('cep', 'CEP', { value: VG.fmtCEP(c.cep), attrs: 'data-mask="cep" inputmode="numeric" placeholder="Preenche o endereço"' })}
@@ -164,9 +168,11 @@
           const bad = (n) => { m.el.querySelector(`#cf-${n}`).closest('.field').classList.add('invalid'); };
           const doc = VG.digits(fd.cpf_cnpj);
           if (!fd.nome.trim()) { bad('nome'); VG.toast('Informe o nome ou razão social.', 'warn'); return false; }
-          if (!VG.validDoc(doc)) { bad('cpf_cnpj'); VG.toast('CPF/CNPJ inválido. Confira os números.', 'warn'); return false; }
-          const dup = S().list('clientes').find((x) => VG.digits(x.cpf_cnpj) === doc && x.id !== id);
-          if (dup) { bad('cpf_cnpj'); VG.toast(`Este CPF/CNPJ já pertence a ${dup.nome} (${dup.codigo}).`, 'warn', 5000); return false; }
+          if (doc && !VG.validDoc(doc)) { bad('cpf_cnpj'); VG.toast('CPF/CNPJ inválido. Confira os números ou deixe em branco para completar depois.', 'warn', 5000); return false; }
+          // o mesmo CPF/CNPJ pode ter várias unidades; só bloqueia se o endereço também for igual
+          const k = VG.CSV.chave({ cpf_cnpj: doc, nome: fd.nome, endereco: fd.endereco, numero: fd.numero });
+          const dup = S().list('clientes').find((x) => x.id !== id && VG.CSV.chave(x) === k);
+          if (dup) { bad('cpf_cnpj'); VG.toast(`Já existe o cadastro ${dup.nome} (${dup.codigo}) com este ${doc ? 'CPF/CNPJ' : 'nome'} neste endereço.`, 'warn', 5000); return false; }
           if (fd.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fd.email)) { bad('email'); VG.toast('E-mail inválido.', 'warn'); return false; }
           const obj = Object.assign({}, id ? c : { criadoEm: VG.nowISO() }, {
             codigo: fd.codigo.trim() || nextCodigo(), nome: fd.nome.trim(), cpf_cnpj: doc, telefone: VG.digits(fd.telefone), email: fd.email.trim(),
@@ -214,7 +220,7 @@
             <input type="file" id="csv-file" accept=".csv,text/csv" class="sr-only">
           </label>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1rem;flex-wrap:wrap">
-            <span class="hint">Aceita vírgula ou ponto e vírgula. CPF/CNPJ já cadastrados são ignorados para evitar duplicidade.</span>
+            <span class="hint">Aceita vírgula ou ponto e vírgula. O mesmo CPF/CNPJ pode ter várias unidades; só é ignorado quando o endereço também é igual. Sem CPF/CNPJ entra com aviso para completar depois.</span>
             <button type="button" class="btn btn-sm" id="csv-model">${VG.icon('download')}<span>Baixar modelo CSV</span></button>
           </div>
         </div>
@@ -270,7 +276,7 @@
         </div>
         <div class="csv-preview"><table class="table"><thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF/CNPJ</th><th>Telefone</th><th>Cidade</th><th>Observação</th></tr></thead><tbody>
           ${analise.registros.slice(0, 500).map((r) => `<tr class="${r.situacao === 'erro' ? 'row-err' : r.situacao === 'duplicado' ? 'row-dup' : ''}">
-            <td class="num">${r.linha}</td><td>${sit[r.situacao]}</td><td>${VG.esc(r.dados.nome || '—')}</td><td>${VG.esc(VG.fmtDoc(r.dados.cpf_cnpj) || '—')}</td>
+            <td class="num">${r.linha}</td><td>${sit[r.situacao]}</td><td>${VG.esc(r.dados.nome || '—')}</td><td>${VG.esc(VG.fmtDoc(r.dados.cpf_cnpj) || 'sem documento')}</td>
             <td>${VG.esc(VG.fmtPhone(r.dados.telefone) || '—')}</td><td>${VG.esc(r.dados.cidade || '—')}</td><td class="faint">${VG.esc(r.erros.join(', '))}</td></tr>`).join('')}
         </tbody></table></div>
         ${analise.registros.length > 500 ? `<p class="hint">Mostrando as 500 primeiras linhas.</p>` : ''}`;

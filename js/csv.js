@@ -53,6 +53,17 @@
 
   const normHeader = (h) => VG.norm(h).replace(/\s+/g, '_');
 
+  /**
+   * Chave de duplicidade: o mesmo CPF/CNPJ pode ter várias unidades (endereços).
+   * Só é duplicado quando o documento E o endereço são iguais.
+   * Sem documento: compara nome + endereço.
+   */
+  function chave(c) {
+    const end = VG.norm([c.endereco, c.numero].join(' ')).replace(/[^a-z0-9]/g, '');
+    const doc = VG.digits(c.cpf_cnpj);
+    return doc && !/^(\d)\1+$/.test(doc) ? doc + '|' + end : 'sem|' + VG.norm(c.nome).replace(/[^a-z0-9]/g, '') + '|' + end;
+  }
+
   /** Converte o texto em registros validados */
   function analisar(text, clientesExistentes) {
     const rows = parse(text);
@@ -66,28 +77,29 @@
     if (map.nome == null) return { erroGeral: 'Não encontramos a coluna "nome" no cabeçalho. Baixe o modelo CSV e use os mesmos nomes de coluna.' };
     if (map.cpf_cnpj == null) return { erroGeral: 'Não encontramos a coluna "cpf_cnpj" no cabeçalho. Baixe o modelo CSV e use os mesmos nomes de coluna.' };
 
-    const docsExistentes = new Set(clientesExistentes.map((c) => VG.digits(c.cpf_cnpj)).filter(Boolean));
-    const docsNoArquivo = new Set();
+    const chaves = new Set(clientesExistentes.map(chave));
     const registros = rows.slice(1).map((r, i) => {
       const d = {};
       COLUNAS.forEach((col) => { d[col] = map[col] != null ? String(r[map[col]] ?? '').trim() : ''; });
       const erros = [];
-      const doc = VG.digits(d.cpf_cnpj);
+      const avisos = [];
+      let doc = VG.digits(d.cpf_cnpj);
+      if (doc && /^(\d)\1+$/.test(doc)) doc = ''; // 000.000.000-00 e similares = sem documento
       let situacao = 'ok';
       if (!d.nome) erros.push('Nome em branco');
-      if (!doc) erros.push('CPF/CNPJ em branco');
+      if (!doc) avisos.push('Sem CPF/CNPJ — completar depois');
       else if (!VG.validDoc(doc)) erros.push('CPF/CNPJ inválido');
       if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) erros.push('E-mail inválido');
       if (d.estado && d.estado.length > 2) d.estado = d.estado.slice(0, 2);
-      if (erros.length) situacao = 'erro';
-      else if (docsExistentes.has(doc)) { situacao = 'duplicado'; erros.push('Já cadastrado'); }
-      else if (docsNoArquivo.has(doc)) { situacao = 'duplicado'; erros.push('Repetido no arquivo'); }
-      if (doc) docsNoArquivo.add(doc);
       d.cpf_cnpj = doc;
       d.telefone = VG.digits(d.telefone);
       d.cep = VG.digits(d.cep);
       d.estado = (d.estado || '').toUpperCase();
-      return { linha: i + 2, dados: d, erros, situacao };
+      const k = chave(d);
+      if (erros.length) situacao = 'erro';
+      else if (chaves.has(k)) { situacao = 'duplicado'; erros.push(doc ? 'Já cadastrado neste endereço' : 'Mesmo nome e endereço já cadastrado'); }
+      if (situacao !== 'erro') chaves.add(k);
+      return { linha: i + 2, dados: d, erros: erros.concat(situacao === 'ok' ? avisos : []), situacao };
     });
     return {
       registros,
@@ -130,5 +142,5 @@
     return '\uFEFF' + [colunas.map((c) => esc(c.label)).join(';'), ...linhas.map((l) => colunas.map((c) => esc(c.get(l))).join(';'))].join('\r\n');
   }
 
-  VG.CSV = { COLUNAS, parse, analisar, lerArquivo, baixarModelo, gerar };
+  VG.CSV = { COLUNAS, parse, analisar, lerArquivo, baixarModelo, gerar, chave };
 })();

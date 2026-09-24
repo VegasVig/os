@@ -160,8 +160,10 @@
             <div class="panel__head"><h2>${VG.icon('user')}Cliente</h2>
               <button type="button" class="btn btn-sm" id="os-newcli">${VG.icon('plus')}<span>Novo cliente</span></button></div>
             <div class="panel__body grid grid-4">
+              <div class="field span-all"><label for="os-cli-q">Buscar cliente</label>
+                <div class="input-group">${VG.icon('search')}<input id="os-cli-q" class="input" placeholder="Digite nome, código, CPF/CNPJ, rua ou bairro" autocomplete="off"></div></div>
               <div class="field span-all"><label for="os-cli">Selecionar cliente cadastrado<span class="req">*</span></label>
-                <select id="os-cli" name="clienteId" class="select">${VG.options(clientes.map((x) => ({ value: x.id, label: `${x.nome} — ${VG.fmtDoc(x.cpf_cnpj)}` })), clienteSel, 'Escolha um cliente…')}</select></div>
+                <select id="os-cli" name="clienteId" class="select">${VG.options(clientes.map((x) => ({ value: x.id, label: `${x.codigo ? x.codigo + ' · ' : ''}${x.nome} — ${[x.endereco, x.numero].filter(Boolean).join(', ') || 'sem endereço'}${x.bairro ? ' (' + x.bairro + ')' : ''} · ${x.cpf_cnpj ? VG.fmtDoc(x.cpf_cnpj) : 'sem doc.'}` })), clienteSel, 'Escolha um cliente…')}</select></div>
               <div class="field span-2"><label for="c-nome">Nome / Razão social</label><input id="c-nome" name="c_nome" class="input" value="${v(c.nome)}"></div>
               <div class="field"><label for="c-doc">CPF/CNPJ</label><input id="c-doc" name="c_cpf_cnpj" class="input" data-mask="doc" value="${v(VG.fmtDoc(c.cpf_cnpj))}"></div>
               <div class="field"><label for="c-tel">Telefone</label><input id="c-tel" name="c_telefone" class="input" data-mask="phone" inputmode="tel" value="${v(VG.fmtPhone(c.telefone))}"></div>
@@ -223,10 +225,19 @@
       set('c_cidade', cli.cidade); set('c_estado', cli.estado); set('c_cep', VG.fmtCEP(cli.cep));
     };
     selCli.onchange = () => fillCliente(S().get('clientes', selCli.value));
+    // busca rápida: filtra a lista (útil com milhares de clientes)
+    const rotulo = (x) => `${x.codigo ? x.codigo + ' · ' : ''}${x.nome} — ${[x.endereco, x.numero].filter(Boolean).join(', ') || 'sem endereço'}${x.bairro ? ' (' + x.bairro + ')' : ''} · ${x.cpf_cnpj ? VG.fmtDoc(x.cpf_cnpj) : 'sem doc.'}`;
+    VG.$('#os-cli-q', el).addEventListener('input', VG.debounce((e) => {
+      const q = VG.norm(e.target.value), qd = VG.digits(e.target.value);
+      const atual = selCli.value;
+      const achados = clientes.filter((x) => !q || VG.norm([x.codigo, x.nome, x.endereco, x.bairro, x.cidade].join(' ')).includes(q) || (qd.length >= 3 && VG.digits(x.cpf_cnpj).includes(qd)));
+      selCli.innerHTML = VG.options(achados.slice(0, 300).map((x) => ({ value: x.id, label: rotulo(x) })), atual, achados.length ? `${achados.length} ${achados.length === 1 ? 'cliente encontrado' : 'clientes encontrados'}${achados.length > 300 ? ' (mostrando 300)' : ''} — escolha…` : 'Nenhum cliente encontrado');
+      if (achados.length === 1) { selCli.value = achados[0].id; fillCliente(achados[0]); }
+    }, 200));
     if (!editing && clienteSel) fillCliente(S().get('clientes', clienteSel));
     VG.$('#os-newcli', el).onclick = () => VG.Clientes.form(null, (novo) => {
       const opt = document.createElement('option');
-      opt.value = novo.id; opt.textContent = `${novo.nome} — ${VG.fmtDoc(novo.cpf_cnpj)}`;
+      opt.value = novo.id; opt.textContent = `${novo.nome} — ${[novo.endereco, novo.numero].filter(Boolean).join(', ') || 'sem endereço'}${novo.bairro ? ' (' + novo.bairro + ')' : ''} · ${novo.cpf_cnpj ? VG.fmtDoc(novo.cpf_cnpj) : 'sem doc.'}`;
       selCli.appendChild(opt); selCli.value = novo.id; fillCliente(novo);
     });
 
