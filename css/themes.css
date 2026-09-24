@@ -1,0 +1,111 @@
+/* =========================================================
+   VEGAS OS — TEMAS
+   Paleta: preto, grafite, aço, prata e branco.
+   ========================================================= */
+
+:root {
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --radius-lg: 16px;
+  --radius: 11px;
+  --radius-sm: 7px;
+  --cut: 9px;               /* chanfro dos botões, inspirado na logo */
+
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --t-theme: background-color .35s var(--ease), color .35s var(--ease), border-color .35s var(--ease);
+
+  /* Status (iguais nos dois temas, ajustados para contraste) */
+  --st-blue: #4d8dff;
+  --st-yellow: #e8b923;
+  --st-orange: #ff8a3d;
+  --st-purple: #a77bff;
+  --st-green: #2fbf71;
+  --st-red: #ff5b5b;
+  --st-gray: #8b9199;
+}
+
+/* ---------- DARK ---------- */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-accent: radial-gradient(1200px 600px at 85% -10%, rgba(190, 198, 210, .10), transparent 60%),
+               radial-gradient(900px 500px at -10% 110%, rgba(150, 158, 170, .07), transparent 60%);
+  --surface: rgba(24, 26, 30, .72);
+  --surface-solid: #17191c;
+  --surface-2: #1f2226;
+  --surface-3: #2a2e33;
+  --hover: rgba(214, 220, 228, .06);
+  --line: rgba(214, 220, 228, .10);
+  --line-strong: rgba(214, 220, 228, .22);
+
+  --text: #f2f4f7;
+  --text-2: #aab0b9;
+  --text-3: #6f757e;
+
+  --silver: #cfd4db;
+  --steel: #8a9099;
+  --metal: linear-gradient(135deg, #f5f7fa 0%, #b9bfc7 38%, #eceff3 55%, #8f959e 100%);
+  --metal-text: linear-gradient(180deg, #ffffff 0%, #c9ced6 55%, #8e949c 100%);
+
+  --btn-bg: var(--metal);
+  --btn-text: #07080a;
+  --btn-2-bg: #22262b;
+  --btn-2-text: #eef0f3;
+
+  --input-bg: rgba(255, 255, 255, .035);
+  --input-bg-focus: rgba(255, 255, 255, .06);
+  --focus: 0 0 0 3px rgba(207, 212, 219, .28);
+
+  --shadow: 0 18px 40px -18px rgba(0, 0, 0, .9), 0 1px 0 rgba(255, 255, 255, .04) inset;
+  --shadow-sm: 0 8px 22px -14px rgba(0, 0, 0, .9);
+  --glass-blur: blur(16px) saturate(120%);
+
+  --logo-filter: none;
+  --scrollbar: #2a2e33;
+}
+
+/* ---------- LIGHT ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e9ebee;
+  --bg-accent: radial-gradient(1200px 600px at 85% -10%, rgba(255, 255, 255, .9), transparent 60%),
+               radial-gradient(900px 500px at -10% 110%, rgba(170, 176, 186, .25), transparent 60%);
+  --surface: rgba(255, 255, 255, .78);
+  --surface-solid: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #e3e6ea;
+  --hover: rgba(20, 22, 26, .045);
+  --line: rgba(20, 22, 26, .10);
+  --line-strong: rgba(20, 22, 26, .20);
+
+  --text: #0c0e11;
+  --text-2: #4a5059;
+  --text-3: #858b93;
+
+  --silver: #5d636b;
+  --steel: #6b7179;
+  --metal: linear-gradient(135deg, #3a3f46 0%, #16181c 45%, #2c3036 70%, #0b0c0e 100%);
+  --metal-text: linear-gradient(180deg, #24282d 0%, #000 100%);
+
+  --btn-bg: var(--metal);
+  --btn-text: #ffffff;
+  --btn-2-bg: #ffffff;
+  --btn-2-text: #15171a;
+
+  --input-bg: #ffffff;
+  --input-bg-focus: #ffffff;
+  --focus: 0 0 0 3px rgba(40, 44, 50, .18);
+
+  --shadow: 0 18px 40px -22px rgba(30, 34, 40, .35), 0 1px 0 rgba(255, 255, 255, .9) inset;
+  --shadow-sm: 0 8px 20px -16px rgba(30, 34, 40, .4);
+  --glass-blur: blur(14px) saturate(140%);
+
+  /* a logo é branca: no tema claro vira preta */
+  --logo-filter: invert(1) brightness(.12);
+  --scrollbar: #c5c9ce;
+
+  --st-yellow: #b88a00;
+  --st-green: #1e9a57;
+}
