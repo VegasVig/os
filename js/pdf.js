@@ -19,6 +19,9 @@
 
   /* ----- imagens ----- */
   function imgInfo(src) {
+    if (src && String(src).indexOf('drive:') === 0) {
+      return VG.Images.get(String(src).slice(6)).then((d) => (d ? imgInfo(d) : null));
+    }
     return new Promise((res) => {
       if (!src) return res(null);
       let done = false;
@@ -171,7 +174,8 @@
     paragraph([a.observacoes && `Técnico: ${a.observacoes}`, os.assinaturaCliente && os.assinaturaCliente.observacoes && `Cliente: ${os.assinaturaCliente.observacoes}`, os.canceladaMotivo && `Cancelamento: ${os.canceladaMotivo}`].filter(Boolean).join('\n') || 'Sem observações.');
 
     /* Fotos */
-    const fotos = [...((a.fotos && a.fotos.antes) || []).map((f) => ['Antes', f]), ...((a.fotos && a.fotos.depois) || []).map((f) => ['Depois', f])];
+    const fotosRef = [...((a.fotos && a.fotos.antes) || []).map((f) => ['Antes', f]), ...((a.fotos && a.fotos.depois) || []).map((f) => ['Depois', f])];
+    const fotos = (await Promise.all(fotosRef.map(async ([l, f]) => [l, String(f).indexOf('drive:') === 0 ? await VG.Images.get(String(f).slice(6)) : f]))).filter((x) => x[1]);
     if (fotos.length) {
       section('Registro fotográfico');
       const cols = 3, gap = 5, fw = (CW - gap * (cols - 1)) / cols, fh = fw * 0.75;
@@ -284,7 +288,7 @@
       </div>`;
     const prevTitle = document.title;
     document.title = nomeArquivo(os).replace('.pdf', '');
-    setTimeout(() => { window.print(); document.title = prevTitle; }, 300);
+    setTimeout(() => { window.print(); document.title = prevTitle; }, 1500);
   }
 
   VG.PDF = { gerar, imprimir, nomeArquivo };

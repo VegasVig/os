@@ -616,3 +616,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .meter > div { height: 100%; background: var(--metal); border-radius: 8px; }
 .pw-toggle { position: absolute; right: .35rem; }
 .panel .form-actions { position: static; background: none; padding: .2rem 0 0; }
+
+/* ---------- VERSÃO APPS SCRIPT ---------- */
+.boot { min-height: 100vh; min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 1.1rem; background: #000; color: #aab0b9; }
+.boot__logo { width: 220px; max-width: 70vw; filter: none !important; }
+.boot__txt { font-size: .85rem; }
+.img-loading { background: linear-gradient(90deg, var(--surface-3), var(--surface-2), var(--surface-3)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+html.is-saving::after {
+  content: "Salvando…"; position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  z-index: 90; padding: .35rem .8rem; border-radius: 20px; font: 600 .75rem var(--font-body);
+  background: var(--surface-solid, #16181b); color: var(--text-2); border: 1px solid var(--line-strong); box-shadow: 0 8px 20px rgba(0,0,0,.35);
+}

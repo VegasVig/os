@@ -1,305 +1,341 @@
 /* =========================================================
-   VEGAS OS — ARMAZENAMENTO
+   VEGAS OS — ARMAZENAMENTO (versão Google Apps Script)
    ---------------------------------------------------------
-   Camada única de acesso a dados. Hoje usa localStorage.
-   Para migrar para uma API/banco real, substitua apenas as
-   funções deste arquivo (list/get/save/remove/...) por
-   chamadas HTTP — as telas não acessam localStorage direto.
-
-   Exemplo futuro:
-     list('ordens')      → GET    /api/ordens
-     save('ordens', os)  → PUT    /api/ordens/:id
-     remove('clientes',id)→ DELETE /api/clientes/:id
-
-   ATENÇÃO: localStorage NÃO é seguro para produção.
-   Os dados ficam apenas neste navegador e podem ser lidos
-   por qualquer pessoa com acesso ao dispositivo.
+   Os dados ficam na Planilha Google (via Code.gs).
+   O navegador mantém uma cópia em memória para as telas
+   ficarem rápidas; cada alteração é enviada ao servidor
+   em segundo plano (fila por registro, sem perder dados).
+   Fotos e assinaturas vão para o Google Drive e voltam
+   como referências "drive:ID", carregadas sob demanda.
    ========================================================= */
 (function () {
   'use strict';
   const VG = window.VG;
   const PREFIX = 'vegas_os_';
-  const SCHEMA_VERSION = 1;
 
   const DEFAULT_CONFIG = {
-    empresa: {
-      nome: 'Vegas Vigilância e Segurança',
-      cnpj: '',
-      telefone: '',
-      email: '',
-      endereco: '',
-      site: '',
-    },
+    empresa: { nome: 'Vegas Vigilância e Segurança', cnpj: '', telefone: '', email: '', endereco: '', site: '' },
     ultimoNumeroOS: 1000,
-    validadeLinkDias: 0, // 0 = links sem expiração
-    logoDataUrl: null,   // logo personalizada (sobrepõe /assets/logo.png)
+    validadeLinkDias: 0,
+    logoDataUrl: '',
   };
+  const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades'];
+
+  let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], config: {}, rev: 0 };
+  let publico = null; // { numero, t } quando a tela foi aberta por link exclusivo
+  const memLocal = {};
+
+  /* ---------- chamada ao servidor ---------- */
+  function credenciais() {
+    if (publico) return { numero: publico.numero, t: publico.t };
+    const s = VG.Store.read('session', null);
+    return s ? { token: s.token } : {};
+  }
+  function call(action, payload, opts) {
+    const o = opts || {};
+    return new Promise((resolve, reject) => {
+      const req = Object.assign({ action }, o.semCredencial ? {} : credenciais(), payload || {});
+      const apiUrl = window.VG_CONFIG && window.VG_CONFIG.API_URL;
+      const run = window.google && window.google.script && window.google.script.run;
+      const tratar = (txt) => {
+          let r;
+          try { r = JSON.parse(txt); } catch (e) { return reject(new Error('O servidor não respondeu corretamente. Confira se a implantação do Apps Script está como "Qualquer pessoa" e se o endereço termina em /exec.')); }
+          if (r.ok) return resolve(r.data);
+          const msg = String(r.erro || 'Erro no servidor.');
+          if (msg.indexOf('SESSAO:') === 0) {
+            const clean = msg.replace('SESSAO:', '').trim();
+            if (!o.silencioso) {
+              VG.Store.write('session', null);
+              VG.toast(clean, 'warn');
+              if (!publico) location.hash = '#/login';
+            }
+            return reject(new Error(clean));
+          }
+          reject(new Error(msg));
+      };
+      const falha = (err) => reject(new Error((err && err.message && !/fetch/i.test(err.message) ? err.message : '') || 'Falha de conexão com o servidor. Verifique a internet.'));
+      if (apiUrl) {
+        // GitHub Pages (ou outro site): POST em texto simples, sem pré-verificação CORS
+        fetch(apiUrl, { method: 'POST', body: JSON.stringify(req), redirect: 'follow' })
+          .then((r) => r.text()).then(tratar).catch(falha);
+      } else if (run) {
+        run.withSuccessHandler(tratar).withFailureHandler(falha).api(req);
+      } else {
+        reject(new Error('Servidor não configurado. Informe o endereço do Apps Script em js/config.js.'));
+      }
+    });
+  }
+
+  /* ---------- fila de gravação (por registro) ---------- */
+  const filas = {};
+  let pendentes = 0;
+  function atualizarIndicador() {
+    document.documentElement.classList.toggle('is-saving', pendentes > 0);
+  }
+
+  /** Copia referências drive: devolvidas pelo servidor para o objeto local */
+  function aplicarRefs(local, enviado, salvo) {
+    if (salvo == null || local == null) return;
+    if (Array.isArray(salvo)) {
+      salvo.forEach((v, i) => {
+        if (typeof v === 'string') {
+          if (v.indexOf('drive:') === 0 && typeof enviado[i] === 'string' && enviado[i].indexOf('data:') === 0) {
+            VG.Images.cache[v.slice(6)] = enviado[i];
+            if (local[i] === enviado[i]) local[i] = v;
+          }
+        } else if (v && typeof v === 'object' && enviado && enviado[i] && local[i]) aplicarRefs(local[i], enviado[i], v);
+      });
+      return;
+    }
+    if (typeof salvo === 'object') {
+      Object.keys(salvo).forEach((k) => {
+        const v = salvo[k];
+        if (typeof v === 'string') {
+          if (v.indexOf('drive:') === 0 && enviado && typeof enviado[k] === 'string' && enviado[k].indexOf('data:') === 0) {
+            VG.Images.cache[v.slice(6)] = enviado[k];
+            if (local[k] === enviado[k]) local[k] = v;
+          }
+        } else if (v && typeof v === 'object' && enviado && enviado[k] && local[k]) aplicarRefs(local[k], enviado[k], v);
+      });
+    }
+  }
+
+  function agendar(col, obj) {
+    const k = col + ':' + obj.id;
+    const f = filas[k] || (filas[k] = { chain: Promise.resolve(), agendado: false });
+    f.col = col; f.obj = obj;
+    if (f.agendado) return f.chain;
+    f.agendado = true;
+    pendentes++; atualizarIndicador();
+    f.chain = f.chain.catch(() => {}).then(async () => {
+      f.agendado = false;
+      const enviado = JSON.parse(JSON.stringify(f.obj));
+      try {
+        const salvo = publico && col === 'ordens'
+          ? await call('savePublic', { obj: enviado })
+          : await call('save', { col, obj: enviado });
+        aplicarRefs(f.obj, enviado, salvo);
+        // supervisora: recebe a versão mesclada (atendimento feito em campo prevalece)
+        const sess = VG.Auth.current();
+        if (salvo && col === 'ordens' && !publico && sess && sess.papel === 'supervisora') {
+          ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'status', 'historico'].forEach((c) => { if (salvo[c] !== undefined) f.obj[c] = salvo[c]; });
+        }
+        if (salvo && salvo.atualizadoEm) f.obj.atualizadoEm = salvo.atualizadoEm;
+        return salvo;
+      } catch (e) {
+        VG.toast('Não foi possível salvar no servidor: ' + e.message, 'error', 7000);
+        throw e;
+      } finally {
+        pendentes--; atualizarIndicador();
+      }
+    });
+    return f.chain;
+  }
+
+  window.addEventListener('beforeunload', (e) => {
+    if (pendentes > 0) { e.preventDefault(); e.returnValue = 'Ainda há alterações sendo salvas.'; }
+  });
 
   const Store = {
+    call,
+
+    /* chaves locais (sessão, último usuário, tema) */
     read(key, def) {
+      if (COLS.indexOf(key) >= 0) return mem[key];
+      if (key === 'config') return mem.config;
       try { const v = localStorage.getItem(PREFIX + key); return v == null ? def : JSON.parse(v); }
-      catch (e) { return def; }
+      catch (e) { return key in memLocal ? memLocal[key] : def; }
     },
     write(key, value) {
-      try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
-      catch (e) {
-        VG.toast('O espaço de armazenamento do navegador está cheio. Remova fotos antigas ou faça um backup e limpe os dados.', 'error', 6000);
-        throw e;
-      }
+      if (COLS.indexOf(key) >= 0) { mem[key] = value; return true; }
+      memLocal[key] = value;
+      try { if (value == null) localStorage.removeItem(PREFIX + key); else localStorage.setItem(PREFIX + key, JSON.stringify(value)); } catch (e) { /* navegador sem armazenamento */ }
+      return true;
     },
 
-    /* ----- Coleções ----- */
-    list(col) { return this.read(col, []); },
-    get(col, id) { return this.list(col).find((x) => x.id === id) || null; },
-    save(col, obj) {
-      const arr = this.list(col);
-      if (!obj.id) obj.id = VG.uid();
-      obj.atualizadoEm = VG.nowISO();
+    /* ---------- estado ---------- */
+    load(snap) {
+      mem = {
+        users: snap.users || [], clientes: snap.clientes || [], tecnicos: snap.tecnicos || [],
+        ordens: snap.ordens || [], atividades: snap.atividades || [], config: snap.config || {}, rev: snap.rev || 0,
+      };
+    },
+    clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], config: mem.config || {}, rev: 0 }; },
+    rev() { return mem.rev; },
+    setRev(r) { mem.rev = r; },
+    setPublic(link) { publico = link; },
+    isPublic() { return !!publico; },
+    pendentes: () => pendentes,
+    /** Aguarda o envio das alterações pendentes (de um registro ou de todos) */
+    flush(id) {
+      const lista = Object.keys(filas).filter((k) => !id || k.endsWith(':' + id)).map((k) => filas[k].chain);
+      return Promise.all(lista);
+    },
+    /** Insere/atualiza um registro vindo do servidor sem reenviar */
+    put(col, obj) {
+      const arr = mem[col];
       const i = arr.findIndex((x) => x.id === obj.id);
       if (i >= 0) arr[i] = obj; else arr.push(obj);
-      this.write(col, arr);
+      return obj;
+    },
+
+    /* ---------- coleções ---------- */
+    list(col) { return mem[col] || []; },
+    get(col, id) { return this.list(col).find((x) => x.id === id) || null; },
+    save(col, obj) {
+      if (!obj.id) obj.id = VG.uid();
+      obj.atualizadoEm = VG.nowISO();
+      this.put(col, obj);
+      agendar(col, obj).catch(() => { /* erro já exibido ao usuário */ });
       return obj;
     },
     saveMany(col, items) {
-      const arr = this.list(col);
-      items.forEach((obj) => { if (!obj.id) obj.id = VG.uid(); obj.atualizadoEm = VG.nowISO(); arr.push(obj); });
-      this.write(col, arr);
+      items.forEach((obj) => { if (!obj.id) obj.id = VG.uid(); obj.atualizadoEm = VG.nowISO(); mem[col].push(obj); });
+      pendentes++; atualizarIndicador();
+      return call('saveMany', { col, items })
+        .catch((e) => { VG.toast('Não foi possível salvar no servidor: ' + e.message, 'error', 7000); throw e; })
+        .finally(() => { pendentes--; atualizarIndicador(); });
     },
-    remove(col, id) { this.write(col, this.list(col).filter((x) => x.id !== id)); },
+    remove(col, id) {
+      mem[col] = this.list(col).filter((x) => x.id !== id);
+      return call('remove', { col, id }).catch((e) => VG.toast('Não foi possível excluir no servidor: ' + e.message, 'error', 7000));
+    },
 
-    /* ----- Ordens de serviço ----- */
+    /* ---------- ordens ---------- */
     getOSByNumero(numero) { return this.list('ordens').find((o) => String(o.numero) === String(numero)) || null; },
+    /** Apenas prévia: o número definitivo é gerado no servidor */
     nextOSNumber() {
       const cfg = this.getConfig();
-      const max = Math.max(cfg.ultimoNumeroOS || 1000, ...this.list('ordens').map((o) => Number(o.numero) || 0));
-      this.setConfig({ ultimoNumeroOS: max + 1 });
-      return max + 1;
+      return Math.max(cfg.ultimoNumeroOS || 1000, ...this.list('ordens').map((o) => Number(o.numero) || 0)) + 1;
     },
-    /** Acrescenta um evento ao histórico da OS (não salva sozinho) */
+    /** Cadastra vários técnicos (com usuário e senha) de uma vez */
+    async importTecnicos(items) {
+      const r = await call('importTecnicos', { items });
+      r.tecnicos.forEach((t) => this.put('tecnicos', t));
+      r.users.forEach((u) => this.put('users', u));
+      return r;
+    },
+    async createOS(os) {
+      const salva = await call('createOS', { os });
+      this.put('ordens', salva);
+      mem.config.ultimoNumeroOS = salva.numero;
+      return salva;
+    },
     hist(os, texto, autor) {
       os.historico = os.historico || [];
       os.historico.push({ dataHora: VG.nowISO(), texto, autor: autor || '' });
     },
 
-    /* ----- Atividade recente ----- */
+    /* ---------- atividade recente ---------- */
     log(texto, osId, icon = 'activity') {
-      const a = this.list('atividades');
-      a.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto, osId: osId || null, icon });
-      this.write('atividades', a.slice(0, 150));
+      const entry = { id: VG.uid(), dataHora: VG.nowISO(), texto, osId: osId || null, icon };
+      mem.atividades.unshift(entry);
+      mem.atividades = mem.atividades.slice(0, 150);
+      const s = VG.Auth.current();
+      // transições feitas pelo técnico/cliente são registradas pelo próprio servidor
+      if (!publico && s && s.papel === 'supervisora') call('log', { entry }).catch(() => {});
     },
 
-    /* ----- Configurações ----- */
+    /* ---------- configurações ---------- */
     getConfig() {
-      const c = this.read('config', {});
+      const c = mem.config || {};
       return Object.assign({}, DEFAULT_CONFIG, c, { empresa: Object.assign({}, DEFAULT_CONFIG.empresa, c.empresa || {}) });
     },
-    setConfig(patch) { this.write('config', Object.assign(this.getConfig(), patch)); },
-
-    /* ----- Preferências (tema) ----- */
-    getTheme() { try { return localStorage.getItem(PREFIX + 'theme') || 'dark'; } catch (e) { return 'dark'; } },
-    setTheme(t) { try { localStorage.setItem(PREFIX + 'theme', t); } catch (e) {} },
-
-    /* ----- Utilidades ----- */
-    usageKB() {
-      let total = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(PREFIX)) total += (localStorage.getItem(k) || '').length * 2;
+    async setConfig(patch) {
+      const antes = Object.assign({}, mem.config);
+      mem.config = Object.assign({}, mem.config, patch);
+      try {
+        const enviado = JSON.parse(JSON.stringify(patch));
+        const salvo = await call('setConfig', { patch });
+        aplicarRefs(mem.config, enviado, salvo);
+        mem.config = Object.assign(mem.config, salvo);
+        return mem.config;
+      } catch (e) {
+        mem.config = antes;
+        VG.toast('Não foi possível salvar as configurações: ' + e.message, 'error', 7000);
+        throw e;
       }
-      return Math.round(total / 1024);
     },
+
+    getTheme() { try { return localStorage.getItem(PREFIX + 'theme') || memLocal.theme || 'dark'; } catch (e) { return memLocal.theme || 'dark'; } },
+    setTheme(t) { memLocal.theme = t; try { localStorage.setItem(PREFIX + 'theme', t); } catch (e) {} },
+
+    /* ---------- backup e demonstração ---------- */
     exportAll() {
-      const data = { app: 'vegas-os', versao: SCHEMA_VERSION, exportadoEm: VG.nowISO() };
-      ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'config'].forEach((k) => (data[k] = this.read(k, null)));
+      const data = { app: 'vegas-os', versao: 1, exportadoEm: VG.nowISO(), observacao: 'Fotos e assinaturas permanecem no Google Drive (referências drive:).' };
+      COLS.forEach((k) => (data[k] = mem[k]));
+      const cfg = Object.assign({}, mem.config);
+      Object.keys(cfg).forEach((k) => { if (k.charAt(0) === '_') delete cfg[k]; });
+      data.config = cfg;
       return data;
     },
-    importAll(data) {
-      if (!data || data.app !== 'vegas-os') throw new Error('Arquivo de backup inválido.');
-      ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'config'].forEach((k) => { if (data[k] != null) this.write(k, data[k]); });
-      this.write('seeded', true);
-    },
-    resetAll() {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(PREFIX) && k !== PREFIX + 'theme') keys.push(k); }
-      keys.forEach((k) => localStorage.removeItem(k));
-    },
-
-    /* ----- Dados de demonstração ----- */
-    ensureSeed() {
-      if (this.read('seeded', false)) return;
-      seedDemo(this);
-      this.write('seeded', true);
-      this.write('schema', SCHEMA_VERSION);
-    },
+    importAll(data) { return call('importAll', { data }); },
+    resetAll() { return call('resetAll', {}); },
+    ensureSeed() { /* no servidor, o primeiro usuário é criado por instalar() */ },
   };
 
-  /** Logo em uso: personalizada (Configurações) ou /assets/logo.png */
-  VG.logoSrc = () => Store.getConfig().logoDataUrl || 'assets/logo.png';
-  VG.logoImg = (cls = '', alt = 'Vegas Vigilância e Segurança') => `<img src="${VG.logoSrc()}" alt="${VG.esc(alt)}" class="logo ${cls}" onerror="this.style.display='none'">`;
-
-  /* =========================================================
-     SEED — dados fictícios para testar o sistema
-     ========================================================= */
-  function fakeSignature(name) {
-    try {
-      const c = document.createElement('canvas');
-      c.width = 520; c.height = 170;
-      const ctx = c.getContext && c.getContext('2d');
-      if (!ctx) return null;
-      ctx.strokeStyle = '#101216'; ctx.fillStyle = '#101216';
-      ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.font = 'italic 50px "Segoe Script", "Brush Script MT", "Snell Roundhand", cursive';
-      ctx.fillText(name.split(' ').slice(0, 2).join(' '), 34, 100);
-      ctx.beginPath(); ctx.moveTo(30, 122);
-      for (let x = 30; x <= 470; x += 20) ctx.quadraticCurveTo(x + 10, 118 + Math.sin(x / 25) * 8, x + 20, 124);
-      ctx.stroke();
-      return c.toDataURL('image/png');
-    } catch (e) { return null; }
-  }
-  function fakePhoto(label, tone) {
-    try {
-      const c = document.createElement('canvas');
-      c.width = 640; c.height = 480;
-      const ctx = c.getContext && c.getContext('2d');
-      if (!ctx) return null;
-      const g = ctx.createLinearGradient(0, 0, 640, 480);
-      g.addColorStop(0, tone ? '#3b4148' : '#1d2024'); g.addColorStop(1, tone ? '#9aa1aa' : '#4a5058');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, 640, 480);
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 6;
-      ctx.strokeRect(250, 170, 140, 100); ctx.beginPath(); ctx.arc(320, 220, 30, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = '600 30px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(label, 320, 340);
-      ctx.font = '18px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)';
-      ctx.fillText('Foto de demonstração', 320, 372);
-      return c.toDataURL('image/jpeg', 0.7);
-    } catch (e) { return null; }
-  }
-
-  function seedDemo(S) {
-    const Auth = VG.Auth;
-    const now = new Date();
-    const at = (daysAgo, h, m) => { const d = new Date(now); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.toISOString(); };
-    const addMin = (iso, min) => new Date(new Date(iso).getTime() + min * 60000).toISOString();
-    const inputDate = (daysAgo) => { const d = new Date(now); d.setDate(d.getDate() - daysAgo); return VG.toInputDate(d); };
-
-    /* ----- Técnicos ----- */
-    const tecnicos = [
-      { nome: 'João Pereira',     usuario: 'joao',   telefone: '21987654321', email: 'joao@vegas.local',   especialidade: 'CFTV e redes' },
-      { nome: 'Marcos Silva',     usuario: 'marcos', telefone: '21976543210', email: 'marcos@vegas.local', especialidade: 'Alarmes e cercas elétricas' },
-      { nome: 'Rafael Costa',     usuario: 'rafael', telefone: '21965432109', email: 'rafael@vegas.local', especialidade: 'Controle de acesso' },
-      { nome: 'Bruno Nascimento', usuario: 'bruno',  telefone: '21954321098', email: 'bruno@vegas.local',  especialidade: 'Portões e interfonia' },
-    ].map((t) => ({ id: VG.uid(), ativo: true, criadoEm: at(90, 9, 0), ...t }));
-    S.write('tecnicos', tecnicos);
-
-    /* ----- Usuários (senha inicial do protótipo) ----- */
-    const senhaInicial = 'Vegas4747@!';
-    const users = [
-      { id: VG.uid(), usuario: 'supervisora', nome: 'Supervisora', papel: 'supervisora', ativo: true },
-      ...tecnicos.map((t) => ({ id: VG.uid(), usuario: t.usuario, nome: t.nome, papel: 'tecnico', tecnicoId: t.id, ativo: true })),
-    ].map((u) => { const salt = VG.token(16); return { ...u, salt, senhaHash: Auth.hash(senhaInicial, salt), criadoEm: at(90, 9, 0) }; });
-    S.write('users', users);
-
-    /* ----- Clientes ----- */
-    const clientes = [
-      { nome: 'Condomínio Residencial Monte Verde', doc: VG.makeCNPJ('123456780001'), telefone: '2133221100', email: 'sindico@monteverde.com.br', endereco: 'Rua das Acácias', numero: '120', complemento: 'Portaria', bairro: 'Jardim América', cidade: 'Rio de Janeiro', estado: 'RJ', cep: '21240000' },
-      { nome: 'Supermercado Bom Preço Ltda', doc: VG.makeCNPJ('234567890001'), telefone: '2135554400', email: 'gerencia@bompreco.com.br', endereco: 'Av. Brasil', numero: '4500', complemento: 'Loja 2', bairro: 'Penha', cidade: 'Rio de Janeiro', estado: 'RJ', cep: '21012000' },
-      { nome: 'Clínica Odontológica Sorriso Pleno', doc: VG.makeCNPJ('345678900001'), telefone: '2126203030', email: 'recepcao@sorrisopleno.com.br', endereco: 'Rua Moreira César', numero: '229', complemento: 'Sala 804', bairro: 'Icaraí', cidade: 'Niterói', estado: 'RJ', cep: '24230052' },
-      { nome: 'Ricardo Almeida Tavares', doc: VG.makeCPF('529982247'), telefone: '21998877665', email: 'ricardo.tavares@email.com', endereco: 'Rua Visconde de Pirajá', numero: '310', complemento: 'Apto 502', bairro: 'Ipanema', cidade: 'Rio de Janeiro', estado: 'RJ', cep: '22410002' },
-      { nome: 'Escola Nova Geração', doc: VG.makeCNPJ('456789010001'), telefone: '2124441212', email: 'secretaria@novageracao.edu.br', endereco: 'Rua Coronel Moreira', numero: '85', complemento: '', bairro: 'Centro', cidade: 'Petrópolis', estado: 'RJ', cep: '25620003' },
-      { nome: 'Transportadora Rota Sul Ltda', doc: VG.makeCNPJ('567890120001'), telefone: '2437778899', email: 'operacoes@rotasul.com.br', endereco: 'Rodovia Presidente Dutra', numero: 'km 280', complemento: 'Galpão 3', bairro: 'Distrito Industrial', cidade: 'Resende', estado: 'RJ', cep: '27537000' },
-      { nome: 'Fernanda Lima Duarte', doc: VG.makeCPF('168995350'), telefone: '21991234567', email: 'fernanda.duarte@email.com', endereco: 'Rua Mariz e Barros', numero: '72', complemento: 'Casa', bairro: 'Tijuca', cidade: 'Rio de Janeiro', estado: 'RJ', cep: '20270004' },
-      { nome: 'Farmácia Vida & Saúde', doc: VG.makeCNPJ('678901230001'), telefone: '2122334455', email: 'contato@vidaesaude.com.br', endereco: 'Estrada do Galeão', numero: '1500', complemento: '', bairro: 'Ilha do Governador', cidade: 'Rio de Janeiro', estado: 'RJ', cep: '21931003' },
-    ].map((c, i) => ({
-      id: VG.uid(), codigo: 'C' + String(i + 1).padStart(4, '0'), status: 'ativo', criadoEm: at(80 - i, 10, 0),
-      nome: c.nome, cpf_cnpj: c.doc, telefone: c.telefone, email: c.email, endereco: c.endereco, numero: c.numero,
-      complemento: c.complemento, bairro: c.bairro, cidade: c.cidade, estado: c.estado, cep: c.cep,
-    }));
-    S.write('clientes', clientes);
-
-    /* ----- Ordens de serviço ----- */
-    const snap = (c) => ({ nome: c.nome, cpf_cnpj: c.cpf_cnpj, telefone: c.telefone, email: c.email, endereco: c.endereco, numero: c.numero, complemento: c.complemento, bairro: c.bairro, cidade: c.cidade, estado: c.estado, cep: c.cep });
-    const T = (i) => tecnicos[i];
-    const C = (i) => clientes[i];
-
-    const plans = [
-      { c: 0, t: 0, st: 'concluida', d: 52, tipo: 'Manutenção', pr: 'alta', eq: ['Câmera', 'Intelbras', 'VHD 3230 B', 'INT230019874', 'PAT-0041', 'Garagem, bloco B'], prob: 'Cliente informa que a câmera 04 está sem imagem desde ontem.', diag: 'Conector BNC oxidado e fonte com tensão abaixo do nominal (10,8V).', serv: 'Substituição dos conectores BNC e da fonte 12V. Ajuste de foco e teste de gravação no DVR.', mats: [['Conector BNC', 2, 'unidade(s)'], ['Fonte 12V 2A', 1, 'unidade(s)']], photos: true },
-      { c: 1, t: 1, st: 'concluida', d: 45, tipo: 'Corretiva', pr: 'urgente', eq: ['Alarme', 'JFL', 'Active 20', 'JFL20-55821', '', 'Depósito'], prob: 'Alarme disparando sozinho durante a madrugada, zona 3.', diag: 'Sensor IVP da zona 3 com lente suja e posicionado de frente para a saída de ar.', serv: 'Limpeza e reposicionamento do sensor. Ajuste de sensibilidade e teste de todas as zonas.', mats: [['Suporte articulado para sensor', 1, 'unidade(s)']] },
-      { c: 2, t: 2, st: 'concluida', d: 38, tipo: 'Instalação', pr: 'normal', eq: ['Controle de acesso', 'ControlID', 'iDFace', 'IDF-778120', 'PAT-1120', 'Recepção'], prob: 'Instalar leitor facial na porta de acesso ao consultório.', diag: 'Infraestrutura existente adequada; necessário ponto de rede.', serv: 'Instalação do leitor facial, fechadura eletroímã e botoeira. Cadastro de 12 usuários.', mats: [['Cabo UTP Cat6', 15, 'metro(s)'], ['Conector RJ45', 2, 'unidade(s)'], ['Fechadura eletroímã 150kg', 1, 'unidade(s)']] },
-      { c: 3, t: 3, st: 'concluida', d: 30, tipo: 'Manutenção', pr: 'normal', eq: ['Portão eletrônico', 'PPA', 'Jet Flex', '', '', 'Garagem'], prob: 'Portão abre pela metade e para.', diag: 'Fim de curso desregulado e cremalheira desalinhada.', serv: 'Regulagem do fim de curso, alinhamento da cremalheira e lubrificação.', mats: [['Graxa lubrificante', 1, 'unidade(s)']] },
-      { c: 4, t: 0, st: 'concluida', d: 22, tipo: 'Preventiva', pr: 'baixa', eq: ['DVR/NVR', 'Hikvision', 'DS-7616NI', 'HK7616-4410', 'PAT-0302', 'Sala da direção'], prob: 'Manutenção preventiva trimestral do sistema de CFTV.', diag: 'HD com 94% de uso e 2 câmeras com IR fraco.', serv: 'Limpeza das câmeras, ajuste de retenção de gravação e atualização de firmware do NVR.', mats: [] },
-      { c: 5, t: 1, st: 'concluida', d: 15, tipo: 'Corretiva', pr: 'alta', eq: ['Cerca elétrica', 'Genno', 'CE-12000', '', '', 'Perímetro do galpão'], prob: 'Cerca elétrica sem choque em parte do perímetro.', diag: 'Fio de aço rompido próximo ao portão lateral.', serv: 'Emenda do fio, substituição de isoladores quebrados e teste de tensão em todo o perímetro.', mats: [['Fio de aço inox', 20, 'metro(s)'], ['Isolador tipo castanha', 8, 'unidade(s)']] },
-      { c: 6, t: 3, st: 'cancelada', d: 12, tipo: 'Suporte', pr: 'normal', eq: ['Interfone', 'HDL', 'F8-SN', '', '', 'Entrada'], prob: 'Interfone sem áudio no monofone da cozinha.', motivo: 'Cliente resolveu o problema por conta própria e pediu o cancelamento.' },
-      { c: 7, t: 0, st: 'aguardando_cliente', d: 6, tipo: 'Manutenção', pr: 'normal', eq: ['Câmera', 'Intelbras', 'VIP 1230 B', 'INT-VIP-99231', '', 'Caixa'], prob: 'Câmera do caixa com imagem embaçada.', diag: 'Umidade interna na lente.', serv: 'Substituição da câmera por unidade nova e vedação da caixa de passagem.', mats: [['Câmera IP 2MP', 1, 'unidade(s)'], ['Caixa de passagem vedada', 1, 'unidade(s)']] },
-      { c: 0, t: 2, st: 'aguardando_cliente', d: 4, tipo: 'Suporte', pr: 'alta', eq: ['Controle de acesso', 'Intelbras', 'SS 3530', '', '', 'Portaria social'], prob: 'Leitor de tag não reconhece os moradores do bloco A.', diag: 'Base de usuários corrompida após queda de energia.', serv: 'Reimportação da base de usuários e instalação de nobreak para o controlador.', mats: [['Nobreak 600VA', 1, 'unidade(s)']] },
-      { c: 1, t: 0, st: 'em_atendimento', d: 1, tipo: 'Instalação', pr: 'alta', eq: ['Câmera', 'Intelbras', 'VHD 1220 D', '', '', 'Estacionamento'], prob: 'Instalar 4 câmeras novas no estacionamento.' },
-      { c: 4, t: 1, st: 'em_atendimento', d: 0, tipo: 'Corretiva', pr: 'urgente', eq: ['Central de alarme', 'Paradox', 'SP6000', 'PX-66012', '', 'Secretaria'], prob: 'Central de alarme sem comunicação com a monitoramento.' },
-      { c: 2, t: 2, st: 'aguardando_tecnico', d: 1, tipo: 'Vistoria', pr: 'normal', eq: ['Rede', '', '', '', '', 'Rack do 8º andar'], prob: 'Vistoria da rede para ampliação do sistema de câmeras.' },
-      { c: 5, t: 3, st: 'aguardando_tecnico', d: 0, tipo: 'Manutenção', pr: 'urgente', eq: ['Portão eletrônico', 'Garen', 'KDZ', '', '', 'Portão de carga'], prob: 'Portão de carga não fecha. Caminhões aguardando.' },
-      { c: 3, t: null, st: 'aberta', d: 0, tipo: 'Instalação', pr: 'baixa', eq: ['Alarme', '', '', '', '', 'Residência'], prob: 'Orçamento e instalação de alarme com 6 sensores.' },
-    ];
-
-    const ordens = [];
-    const atividades = [];
-    let numero = 1031;
-
-    plans.forEach((p) => {
-      const c = C(p.c);
-      const tec = p.t != null ? T(p.t) : null;
-      const created = at(p.d, 8 + (numero % 3), 10 + (numero % 5) * 7);
-      const os = {
-        id: VG.uid(), numero: numero++, criadaEm: created, prioridade: p.pr, tipo: p.tipo, status: p.st,
-        clienteId: c.id, cliente: snap(c),
-        equipamento: { tipo: p.eq[0], marca: p.eq[1], modelo: p.eq[2], serie: p.eq[3], patrimonio: p.eq[4], local: p.eq[5] },
-        problema: p.prob,
-        tecnicoId: tec ? tec.id : null, tecnicoNome: tec ? tec.nome : '',
-        prazoData: inputDate(Math.max(p.d - 1, -2)), prazoHora: '14:00',
-        tokenTecnico: VG.token(10), tokenCliente: VG.token(10),
-        atendimento: { inicio: null, fim: null, diagnostico: '', servico: '', materiais: [], observacoes: '', fotos: { antes: [], depois: [] } },
-        assinaturaTecnico: null, assinaturaCliente: null,
-        historico: [],
-      };
-      const H = (iso, texto) => { os.historico.push({ dataHora: iso, texto }); atividades.push({ id: VG.uid(), dataHora: iso, texto: texto.replace(/\.$/, '') + ` — OS #${os.numero}`, osId: os.id, icon: 'activity' }); };
-      H(created, 'OS criada pela supervisora.');
-      if (tec) H(addMin(created, 8), `OS enviada para ${tec.nome}.`);
-
-      if (['em_atendimento', 'aguardando_cliente', 'concluida'].includes(p.st)) {
-        const ini = addMin(created, 230);
-        os.atendimento.inicio = ini;
-        H(ini, 'Técnico iniciou atendimento.');
-        if (p.diag) os.atendimento.diagnostico = p.diag;
-      }
-      if (['aguardando_cliente', 'concluida'].includes(p.st)) {
-        const fim = addMin(os.atendimento.inicio, 55);
-        os.atendimento.fim = fim;
-        os.atendimento.servico = p.serv;
-        os.atendimento.materiais = (p.mats || []).map(([descricao, quantidade, unidade]) => ({ id: VG.uid(), descricao, quantidade, unidade }));
-        os.atendimento.observacoes = 'Sistema testado junto ao responsável no local.';
-        if (p.photos) {
-          const a = fakePhoto('Antes — câmera 04', false), b = fakePhoto('Depois — câmera 04', true);
-          if (a) os.atendimento.fotos.antes.push(a);
-          if (b) os.atendimento.fotos.depois.push(b);
-        }
-        os.assinaturaTecnico = { nome: tec.nome, imagem: fakeSignature(tec.nome), dataHora: fim };
-        H(fim, 'Técnico finalizou atendimento.');
-      }
-      if (p.st === 'concluida') {
-        const sig = addMin(os.atendimento.fim, 6);
-        os.assinaturaCliente = { nome: c.nome.length > 28 ? 'Responsável ' + c.nome.split(' ')[0] : c.nome, documento: VG.fmtDoc(c.cpf_cnpj), imagem: fakeSignature(c.nome), dataHora: sig, observacoes: '' };
-        H(sig, 'Cliente assinou.');
-        H(addMin(sig, 1), 'OS concluída.');
-      }
-      if (p.st === 'cancelada') {
-        os.canceladaMotivo = p.motivo;
-        H(addMin(created, 90), `OS cancelada. Motivo: ${p.motivo}`);
-      }
-      ordens.push(os);
+  /* ---------- imagens do Drive ---------- */
+  const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  const Images = {
+    cache: {},
+    esperando: {},
+    fila: [],
+    timer: null,
+    get(id) {
+      if (this.cache[id]) return Promise.resolve(this.cache[id]);
+      if (this.esperando[id]) return this.esperando[id].p;
+      let res;
+      const p = new Promise((r) => (res = r));
+      this.esperando[id] = { p, res };
+      this.fila.push(id);
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.buscar(), 30);
+      return p;
+    },
+    async buscar() {
+      const ids = this.fila.splice(0, 40);
+      if (this.fila.length) this.timer = setTimeout(() => this.buscar(), 10);
+      if (!ids.length) return;
+      let r = {};
+      try { r = await call('getImages', { ids }, { silencioso: true }); } catch (e) { r = {}; }
+      ids.forEach((id) => {
+        if (r[id]) this.cache[id] = r[id];
+        const w = this.esperando[id];
+        delete this.esperando[id];
+        if (w) w.res(r[id] || null);
+      });
+    },
+    /** Resolve <img src="drive:ID"> em qualquer parte da página */
+    hidratar(root) {
+      const imgs = root.querySelectorAll ? root.querySelectorAll('img[src^="drive:"]') : [];
+      const lista = root.tagName === 'IMG' && String(root.getAttribute('src') || '').indexOf('drive:') === 0 ? [root] : Array.from(imgs);
+      lista.forEach((img) => {
+        const id = img.getAttribute('src').slice(6);
+        img.setAttribute('data-drive', id);
+        if (this.cache[id]) { img.src = this.cache[id]; return; }
+        img.src = PIXEL;
+        img.classList.add('img-loading');
+        this.get(id).then((d) => { img.classList.remove('img-loading'); if (d) img.src = d; else img.alt = 'Imagem indisponível'; });
+      });
+    },
+  };
+  VG.Images = Images;
+  const obs = new MutationObserver((muts) => {
+    muts.forEach((m) => {
+      if (m.type === 'attributes') Images.hidratar(m.target);
+      else m.addedNodes.forEach((n) => { if (n.nodeType === 1) Images.hidratar(n); });
     });
+  });
+  const iniciarObs = () => obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+  if (document.body) iniciarObs(); else document.addEventListener('DOMContentLoaded', iniciarObs);
 
-    S.write('ordens', ordens);
-    atividades.sort((a, b) => (a.dataHora < b.dataHora ? 1 : -1));
-    S.write('atividades', atividades.slice(0, 60));
-    S.setConfig({ ultimoNumeroOS: numero - 1 });
-  }
+  /** Logo em uso: personalizada (Configurações) ou a logo embutida */
+  VG.logoSrc = () => {
+    const l = Store.getConfig().logoDataUrl;
+    if (l && l.indexOf('drive:') === 0) return Images.cache[l.slice(6)] || l;
+    return l || VG.LOGO_EMBED || '';
+  };
+  VG.logoImg = (cls = '', alt = 'Vegas Vigilância e Segurança') => `<img src="${VG.logoSrc()}" alt="${VG.esc(alt)}" class="logo ${cls}" onerror="this.style.display='none'">`;
 
   VG.Store = Store;
 })();

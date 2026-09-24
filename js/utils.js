@@ -155,8 +155,10 @@
 
   /** Link exclusivo da OS: #/os/NUMERO/TOKEN */
   VG.linkFor = (os, papel) => {
-    const base = location.href.split('#')[0];
-    return `${base}#/os/${os.numero}/${papel === 'cliente' ? os.tokenCliente : os.tokenTecnico}`;
+    const tok = papel === 'cliente' ? os.tokenCliente : os.tokenTecnico;
+    const base = window.VG_BOOT && window.VG_BOOT.baseUrl;
+    if (base) return `${base}?os=${os.numero}&t=${tok}`;
+    return `${location.href.split('#')[0]}#/os/${os.numero}/${tok}`;
   };
 
   /* ---------- ÍCONES (SVG inline) ---------- */

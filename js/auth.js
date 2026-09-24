@@ -1,23 +1,12 @@
 /* =========================================================
-   VEGAS OS — AUTENTICAÇÃO E PERMISSÕES
-   ---------------------------------------------------------
-   PROTÓTIPO: as senhas são guardadas como hash SHA-256 com
-   "salt" por usuário, e a sessão fica no navegador.
-
-   PARA PRODUÇÃO, substituir por:
-   • POST /api/auth/login  → servidor valida (bcrypt/argon2)
-     e devolve sessão em cookie httpOnly + Secure + SameSite
-   • GET  /api/auth/me     → dados do usuário logado
-   • POST /api/auth/logout → invalida a sessão no servidor
-   • Links de OS validados no servidor (token aleatório de
-     32+ bytes, com expiração e revogação)
-   Nunca confie em verificações feitas só no navegador.
+   VEGAS OS — AUTENTICAÇÃO (versão Google Apps Script)
+   A senha é conferida no servidor (Code.gs). O navegador
+   guarda apenas o token de sessão, que expira no servidor.
    ========================================================= */
 (function () {
   'use strict';
   const VG = window.VG;
 
-  /* SHA-256 em JavaScript puro (funciona também fora de HTTPS) */
   function sha256(ascii) {
     function rr(v, a) { return (v >>> a) | (v << (32 - a)); }
     const maxWord = Math.pow(2, 32);
@@ -72,44 +61,39 @@
     cliente: ['os.link'],
   };
   const PAPEL_LABEL = { supervisora: 'Supervisora', tecnico: 'Técnico', cliente: 'Cliente' };
-
   const SESSION_HOURS = 10;
-  const MAX_TENTATIVAS = 5;
-  const BLOQUEIO_SEG = 60;
 
   const Auth = {
     sha256: (s) => sha256(utf8(s)),
+    /** mesmo cálculo do servidor: SHA-256( salt + '::' + senha ) */
     hash(senha, salt) { return sha256(utf8(`${salt}::${senha}`)); },
     papelLabel: (p) => PAPEL_LABEL[p] || p,
 
-    /** Retorna { ok, erro } — no futuro: chamada à API */
-    login(usuario, senha) {
-      const S = VG.Store;
-      const lock = S.read('login_lock', { falhas: 0, ate: 0 });
-      if (lock.ate > Date.now()) {
-        const s = Math.ceil((lock.ate - Date.now()) / 1000);
-        return { ok: false, erro: `Muitas tentativas. Tente novamente em ${s}s.` };
+    async login(usuario, senha) {
+      try {
+        VG.Store.setPublic(null);
+        const r = await VG.Store.call('login', { usuario, senha }, { semCredencial: true, silencioso: true });
+        const session = Object.assign({}, r.session, { expiraEm: Date.now() + SESSION_HOURS * 3600 * 1000 });
+        VG.Store.write('session', session);
+        VG.Store.load(r.snapshot);
+        return { ok: true, session };
+      } catch (e) {
+        return { ok: false, erro: e.message };
       }
-      const u = S.list('users').find((x) => VG.norm(x.usuario) === VG.norm(usuario));
-      const valido = u && u.ativo !== false && this.hash(senha, u.salt) === u.senhaHash;
-      if (!valido) {
-        const falhas = (lock.falhas || 0) + 1;
-        S.write('login_lock', falhas >= MAX_TENTATIVAS ? { falhas: 0, ate: Date.now() + BLOQUEIO_SEG * 1000 } : { falhas, ate: 0 });
-        return { ok: false, erro: u && u.ativo === false ? 'Este usuário está desativado.' : 'Usuário ou senha incorretos.' };
+    },
+
+    /** Recarrega os dados do servidor usando a sessão salva */
+    async restore() {
+      const s = this.current();
+      if (!s) return false;
+      try {
+        const r = await VG.Store.call('bootstrap', { token: s.token }, { semCredencial: true, silencioso: true });
+        VG.Store.load(r.snapshot);
+        return true;
+      } catch (e) {
+        if (/sess|acesso/i.test(e.message)) VG.Store.write('session', null);
+        throw e;
       }
-      if (u.papel === 'tecnico') {
-        const t = S.get('tecnicos', u.tecnicoId);
-        if (!t || t.ativo === false) return { ok: false, erro: 'Este técnico está inativo. Fale com a supervisão.' };
-      }
-      S.write('login_lock', { falhas: 0, ate: 0 });
-      const session = {
-        token: VG.token(32), userId: u.id, usuario: u.usuario, nome: u.nome, papel: u.papel,
-        tecnicoId: u.tecnicoId || null, criadaEm: VG.nowISO(), expiraEm: Date.now() + SESSION_HOURS * 3600 * 1000,
-      };
-      S.write('session', session);
-      u.ultimoAcesso = VG.nowISO();
-      S.save('users', u);
-      return { ok: true, session };
     },
 
     current() {
@@ -118,23 +102,28 @@
       if (Date.now() > s.expiraEm) { VG.Store.write('session', null); return null; }
       return s;
     },
-    logout() { VG.Store.write('session', null); },
+    logout() {
+      const s = VG.Store.read('session', null);
+      if (s) VG.Store.call('logout', { token: s.token }, { semCredencial: true, silencioso: true }).catch(() => {});
+      VG.Store.write('session', null);
+      VG.Store.clear();
+    },
 
     can(perm) { const s = this.current(); return !!s && (PERMISSOES[s.papel] || []).includes(perm); },
 
-    changePassword(userId, atual, nova) {
-      const u = VG.Store.get('users', userId);
-      if (!u) return { ok: false, erro: 'Usuário não encontrado.' };
-      if (this.hash(atual, u.salt) !== u.senhaHash) return { ok: false, erro: 'A senha atual está incorreta.' };
+    async changePassword(userId, atual, nova) {
       const v = this.validarSenha(nova);
       if (v) return { ok: false, erro: v };
-      this.setPassword(u, nova);
-      return { ok: true };
+      try { await VG.Store.call('changePassword', { atual, nova }); return { ok: true }; }
+      catch (e) { return { ok: false, erro: e.message }; }
     },
+    /** Define a senha de outro usuário (tela de Técnicos). O hash vai para o servidor. */
     setPassword(u, nova) {
       u.salt = VG.token(16);
       u.senhaHash = this.hash(nova, u.salt);
       VG.Store.save('users', u);
+      // depois de gravado, não mantém o hash em memória
+      VG.Store.flush(u.id).then(() => { delete u.senhaHash; delete u.salt; }).catch(() => {});
     },
     validarSenha(s) {
       if (!s || s.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
@@ -142,20 +131,20 @@
       return '';
     },
 
-    /** Valida o link #/os/NUMERO/TOKEN → { os, papel } ou { erro } */
-    resolveLink(numero, token) {
-      const os = VG.Store.getOSByNumero(numero);
-      if (!os || !token) return { erro: 'Link inválido ou Ordem de Serviço não encontrada.' };
-      let papel = null;
-      if (token === os.tokenTecnico) papel = 'tecnico';
-      else if (token === os.tokenCliente) papel = 'cliente';
-      if (!papel) return { erro: 'Este link não é mais válido. Peça um novo link à supervisão.' };
-      const dias = Number(VG.Store.getConfig().validadeLinkDias) || 0;
-      if (dias > 0 && os.status !== 'concluida') {
-        const expira = new Date(os.criadaEm).getTime() + dias * 86400000;
-        if (Date.now() > expira) return { erro: 'Este link expirou. Peça um novo link à supervisão.' };
+    /** Valida o link ?os=NUMERO&t=TOKEN no servidor → { os, papel } ou { erro } */
+    async resolveLink(numero, token) {
+      try {
+        VG.Store.setPublic({ numero: String(numero), t: String(token) });
+        const r = await VG.Store.call('resolveLink', {});
+        const existente = this.current() && VG.Store.get('ordens', r.os.id);
+        if (existente) Object.assign(existente, r.os, { tokenTecnico: existente.tokenTecnico || r.os.tokenTecnico });
+        else if (this.current()) VG.Store.put('ordens', r.os);
+        else { VG.Store.load({ ordens: [r.os], config: r.config }); }
+        return { os: VG.Store.get('ordens', r.os.id), papel: r.papel };
+      } catch (e) {
+        VG.Store.setPublic(null);
+        return { erro: e.message };
       }
-      return { os, papel };
     },
   };
 

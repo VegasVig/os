@@ -230,7 +230,7 @@
       selCli.appendChild(opt); selCli.value = novo.id; fillCliente(novo);
     });
 
-    form.addEventListener('submit', (ev) => {
+    form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const fd = Object.fromEntries(new FormData(form));
       form.querySelectorAll('.field').forEach((x) => x.classList.remove('invalid'));
@@ -252,18 +252,18 @@
       try {
         if (!editing) {
           const nova = {
-            numero: S().nextOSNumber(), criadaEm: VG.nowISO(), criadaPor: autor,
+            numero: 0, criadaEm: VG.nowISO(), criadaPor: autor,
             prioridade: fd.prioridade || 'normal', tipo: fd.tipo, status: tec ? 'aguardando_tecnico' : 'aberta',
             clienteId: fd.clienteId, cliente, equipamento, problema: fd.problema.trim(),
             tecnicoId: tec ? tec.id : null, tecnicoNome: tec ? tec.nome : '',
             prazoData: fd.prazoData || '', prazoHora: fd.prazoHora || '',
-            tokenTecnico: VG.token(10), tokenCliente: VG.token(10),
+            tokenTecnico: '', tokenCliente: '',
             atendimento: { inicio: null, fim: null, diagnostico: '', servico: '', materiais: [], observacoes: '', fotos: { antes: [], depois: [] } },
             assinaturaTecnico: null, assinaturaCliente: null, historico: [],
           };
           S().hist(nova, 'OS criada pela supervisora.', autor);
           if (tec) S().hist(nova, `OS enviada para ${tec.nome}.`, autor);
-          S().save('ordens', nova);
+          Object.assign(nova, await S().createOS(nova)); // número e links gerados no servidor
           S().log(`OS #${nova.numero} criada`, nova.id, 'plus');
           if (tec) S().log(`Técnico ${tec.nome.split(' ')[0]} recebeu a OS #${nova.numero}`, nova.id, 'user');
           location.hash = '#/os/ver/' + nova.id;
@@ -291,6 +291,7 @@
         }
       } catch (err) {
         VG.setBusy(btn, false);
+        VG.toast('Não foi possível salvar a OS: ' + err.message, 'error', 7000);
       }
     });
   }

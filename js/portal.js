@@ -158,6 +158,7 @@
     const a = os.atendimento;
     const savedEl = VG.$('[data-saved]', body);
     const persist = () => {
+      if (os.status !== 'em_atendimento') return false; // atendimento já finalizado
       try {
         S().save('ordens', os);
         if (savedEl) savedEl.textContent = `Salvo às ${VG.fmtTime(VG.nowISO())}.`;
@@ -253,7 +254,13 @@
       S().hist(os, 'Técnico finalizou atendimento.', nome);
       S().hist(os, 'Técnico assinou.', nome);
       S().save('ordens', os);
-      S().log(`OS #${os.numero} finalizada`, os.id, 'check');
+      const btnF = VG.$('#t-finish', body);
+      VG.setBusy(btnF, true, 'Enviando…');
+      try { await S().flush(os.id); }
+      catch (e) {
+        os.status = 'em_atendimento'; os.assinaturaTecnico = null; a.fim = null; os.historico.splice(-2, 2);
+        VG.setBusy(btnF, false); return;
+      }
       VG.toast('Atendimento finalizado. Agora falta a assinatura do cliente.', 'success');
       redraw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -293,7 +300,7 @@
     pads.push(pad);
     startClock(body);
     VG.$('#c-clear', body).onclick = () => pad.clear();
-    VG.$('#c-confirm', body).onclick = () => {
+    VG.$('#c-confirm', body).onclick = async () => {
       const nome = VG.$('#c-nome', body).value.trim();
       const doc = VG.$('#c-doc', body).value.trim();
       const obs = VG.$('#c-obs', body).value.trim();
@@ -308,8 +315,14 @@
       S().hist(fresh, obs ? `Cliente assinou. Observação: ${obs}` : 'Cliente assinou.', nome);
       S().hist(fresh, 'OS concluída.', 'Sistema');
       S().save('ordens', fresh);
-      S().log(`Cliente assinou OS #${fresh.numero}`, fresh.id, 'pen');
-      S().log(`OS #${fresh.numero} concluída`, fresh.id, 'check');
+      const btnC = VG.$('#c-confirm', body);
+      VG.setBusy(btnC, true, 'Enviando assinatura…');
+      try { await S().flush(fresh.id); }
+      catch (e) {
+        // devolve a OS ao estado anterior para permitir nova tentativa
+        fresh.status = 'aguardando_cliente'; fresh.assinaturaCliente = null; fresh.historico.splice(-2, 2);
+        VG.setBusy(btnC, false); return;
+      }
       Object.assign(os, fresh);
       redraw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -379,14 +392,17 @@
               <button class="btn btn-primary btn-lg" id="t-start" style="width:100%;max-width:420px">${VG.icon('play')}<span>Iniciar atendimento</span></button>
             </div></section>`;
           body.innerHTML = html;
-          VG.$('#t-start', body).onclick = () => {
+          VG.$('#t-start', body).onclick = async (ev) => {
+            const btn = ev.currentTarget;
             const o = S().get('ordens', osId);
             o.atendimento = o.atendimento || os.atendimento;
             o.atendimento.inicio = VG.nowISO();
             o.status = 'em_atendimento';
             S().hist(o, 'Técnico iniciou atendimento.', o.tecnicoNome || 'Técnico');
             S().save('ordens', o);
-            S().log(`Técnico ${(o.tecnicoNome || '').split(' ')[0]} iniciou a OS #${o.numero}`, o.id, 'play');
+            VG.setBusy(btn, true, 'Registrando…');
+            try { await S().flush(o.id); }
+            catch (e) { o.status = st; o.atendimento.inicio = null; o.historico.pop(); VG.setBusy(btn, false); return; }
             VG.toast('Atendimento iniciado.', 'success');
             draw();
           };

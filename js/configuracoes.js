@@ -11,8 +11,6 @@
     const cfg = S().getConfig();
     const emp = cfg.empresa;
     const sess = VG.Auth.current();
-    const kb = S().usageKB();
-    const limite = 5120;
     const v = (x) => VG.esc(x || '');
     const tema = S().getTheme();
 
@@ -67,31 +65,37 @@
                 <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${VG.icon('check')}<span>Salvar</span></button></div>
               </form></section>
 
-            <section class="panel"><div class="panel__head"><h3>${VG.icon('database')}Dados e backup</h3></div>
+            <section class="panel"><div class="panel__head"><h3>${VG.icon('database')}Banco de dados</h3></div>
               <div class="panel__body stack">
-                <div><div class="hbar__top"><span>Armazenamento usado neste navegador</span><b>${kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'}</b></div>
-                  <div class="meter"><div style="width:${Math.min(100, (kb / limite) * 100)}%"></div></div>
-                  <span class="hint">Limite aproximado de 5 MB. Fotos ocupam a maior parte do espaço.</span></div>
+                <p class="hint" style="margin:0">Os dados ficam numa Planilha Google e as fotos e assinaturas numa pasta do Google Drive, na conta de quem publicou o sistema.</p>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                  ${cfg._planilhaUrl ? `<a class="btn" href="${VG.esc(cfg._planilhaUrl)}" target="_blank" rel="noopener">${VG.icon('sheet')}<span>Abrir planilha</span></a>` : ''}
+                  ${cfg._pastaUrl ? `<a class="btn" href="${VG.esc(cfg._pastaUrl)}" target="_blank" rel="noopener">${VG.icon('image')}<span>Abrir pasta de fotos</span></a>` : ''}
+                </div>
                 <div style="display:flex;gap:.5rem;flex-wrap:wrap">
                   <button class="btn" id="cf-exp">${VG.icon('download')}<span>Exportar backup</span></button>
                   <button class="btn" id="cf-imp">${VG.icon('upload')}<span>Importar backup</span></button>
                   <input type="file" accept="application/json,.json" hidden id="cf-imp-file">
-                  <button class="btn btn-danger" id="cf-reset">${VG.icon('refresh')}<span>Restaurar dados de demonstração</span></button>
                 </div>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:.9rem">
+                  <button class="btn btn-danger" id="cf-reset">${VG.icon('trash')}<span>Apagar todos os dados</span></button>
+                </div>
+                <span class="hint">Apaga clientes, técnicos, OS e usuários da planilha. Faça um backup antes.</span>
               </div></section>
 
-            <div class="notice notice--info">${VG.icon('info')}<div><strong>Sobre segurança.</strong> Este protótipo guarda dados e senhas (com hash) no navegador, o que não é seguro para produção. A camada de dados (<code>js/storage.js</code>) e a de autenticação (<code>js/auth.js</code>) já estão isoladas para serem trocadas por uma API com banco de dados, sessão no servidor, tokens seguros e expiração de links.</div></div>
+            <div class="notice notice--info">${VG.icon('info')}<div><strong>Segurança.</strong> As senhas são conferidas no servidor (Google Apps Script) e nunca chegam ao navegador. Cada link de OS só dá acesso àquela ordem, e o cliente só consegue assinar — não altera o serviço registrado. Troque a senha inicial da supervisora e dos técnicos.</div></div>
           </div>
         </div>
       </div>`;
 
     VG.bindMasks(el);
 
-    VG.$('#cf-emp', el).onsubmit = (e) => {
+    VG.$('#cf-emp', el).onsubmit = async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
       if (!fd.nome.trim()) return VG.toast('Informe o nome da empresa.', 'warn');
-      S().setConfig({ empresa: { nome: fd.nome.trim(), cnpj: VG.digits(fd.cnpj), telefone: VG.digits(fd.telefone), email: fd.email.trim(), site: fd.site.trim(), endereco: fd.endereco.trim() } });
+      try { await S().setConfig({ empresa: { nome: fd.nome.trim(), cnpj: VG.digits(fd.cnpj), telefone: VG.digits(fd.telefone), email: fd.email.trim(), site: fd.site.trim(), endereco: fd.endereco.trim() } }); }
+      catch (err) { return; }
       VG.toast('Dados da empresa salvos.', 'success');
     };
 
@@ -104,31 +108,31 @@
       if (f.size > 1.5 * 1024 * 1024) return VG.toast('Use uma imagem de até 1,5 MB.', 'warn');
       const r = new FileReader();
       r.onload = () => {
-        try { S().setConfig({ logoDataUrl: r.result }); VG.toast('Logo atualizada.', 'success'); VG.App && VG.App.refresh(); }
-        catch (err) { /* toast de espaço já exibido */ }
+        VG.toast('Enviando logo…');
+        S().setConfig({ logoDataUrl: r.result }).then(() => { VG.toast('Logo atualizada.', 'success'); VG.App && VG.App.refresh(); }).catch(() => {});
       };
       r.readAsDataURL(f);
     };
     const lr = VG.$('#cf-logo-reset', el);
-    if (lr) lr.onclick = () => { S().setConfig({ logoDataUrl: '' }); VG.toast('Logo padrão restaurada.', 'success'); VG.App && VG.App.refresh(); };
+    if (lr) lr.onclick = () => S().setConfig({ logoDataUrl: '' }).then(() => { VG.toast('Logo padrão restaurada.', 'success'); VG.App && VG.App.refresh(); }).catch(() => {});
 
     VG.$$('input[name=tema]', el).forEach((r) => (r.onchange = () => VG.Theme.set(r.value)));
 
-    VG.$('#cf-pw', el).onsubmit = (e) => {
+    VG.$('#cf-pw', el).onsubmit = async (e) => {
       e.preventDefault();
       const atual = VG.$('#pw-atual', el).value, nova = VG.$('#pw-nova', el).value, conf = VG.$('#pw-conf', el).value;
       if (!atual || !nova) return VG.toast('Preencha a senha atual e a nova senha.', 'warn');
       if (nova !== conf) return VG.toast('A confirmação não confere com a nova senha.', 'warn');
-      const r = VG.Auth.changePassword(sess.userId, atual, nova);
+      const r = await VG.Auth.changePassword(sess.userId, atual, nova);
       if (!r.ok) return VG.toast(r.erro, 'error');
       e.target.reset();
       VG.toast('Senha alterada com sucesso.', 'success');
     };
 
-    VG.$('#cf-link', el).onsubmit = (e) => {
+    VG.$('#cf-link', el).onsubmit = async (e) => {
       e.preventDefault();
       const n = Math.max(0, Math.min(365, parseInt(VG.$('#cf-val', el).value, 10) || 0));
-      S().setConfig({ validadeLinkDias: n });
+      try { await S().setConfig({ validadeLinkDias: n }); } catch (err) { return; }
       VG.toast(n ? `Links expiram ${n} dia${n > 1 ? 's' : ''} após a abertura da OS.` : 'Links sem expiração.', 'success');
     };
 
@@ -145,19 +149,26 @@
       if (!(await VG.confirm('Os dados atuais serão substituídos pelos dados do backup. Deseja continuar?', { title: 'Importar backup', ok: 'Importar', danger: true }))) return;
       try {
         const data = JSON.parse(await f.text());
-        S().importAll(data);
-        VG.toast('Backup importado. Entre novamente.', 'success');
-        VG.Auth.logout();
-        setTimeout(() => { location.hash = '#/login'; VG.App.refresh(); }, 400);
-      } catch (err) { VG.toast(err.message && err.message.includes('inválido') ? err.message : 'Não foi possível ler o arquivo de backup.', 'error'); }
+        VG.toast('Importando backup…');
+        await S().importAll(data);
+        encerrar('Backup importado. Entre novamente.');
+      } catch (err) { VG.toast(err.message || 'Não foi possível ler o arquivo de backup.', 'error', 7000); }
+    };
+
+    const encerrar = (msg) => {
+      VG.toast(msg, 'success', 6000);
+      VG.Store.write('session', null);
+      VG.Store.clear();
+      setTimeout(() => { location.hash = '#/login'; VG.App.refresh(); }, 400);
     };
 
     VG.$('#cf-reset', el).onclick = async () => {
-      if (!(await VG.confirm('Todos os dados deste navegador (clientes, técnicos, OS, fotos e assinaturas) serão apagados e substituídos pelos dados de demonstração. Senhas voltam ao padrão.', { title: 'Restaurar demonstração', ok: 'Apagar e restaurar', danger: true }))) return;
-      S().resetAll();
-      S().ensureSeed();
-      VG.toast('Dados de demonstração restaurados. Entre novamente.', 'success');
-      setTimeout(() => { location.hash = '#/login'; VG.App.refresh(); }, 400);
+      if (!(await VG.confirm('Todos os clientes, técnicos, OS e usuários serão apagados da planilha. Fica apenas o usuário "supervisora" com a senha inicial. As fotos já enviadas continuam na pasta do Drive.', { title: 'Apagar todos os dados', ok: 'Apagar tudo', danger: true }))) return;
+      const txt = await VG.promptText({ title: 'Confirmação', label: 'Digite APAGAR para confirmar', ok: 'Apagar tudo', danger: true });
+      if (txt == null) return;
+      if (txt.trim().toUpperCase() !== 'APAGAR') return VG.toast('Confirmação incorreta. Nada foi apagado.', 'warn');
+      try { await S().resetAll(); encerrar('Dados apagados. Entre com o usuário supervisora.'); }
+      catch (err) { VG.toast(err.message, 'error', 7000); }
     };
   }
 

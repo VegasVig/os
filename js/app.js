@@ -63,6 +63,8 @@
   ];
   const PUBLIC_LINK = /^\/os\/(\d+)\/([A-Za-z0-9]+)$/;
 
+  let routeSeq = 0;
+  const bootHTML = (txt) => `<div class="boot">${VG.logoImg('boot__logo')}<span class="spinner"></span><span class="boot__txt">${VG.esc(txt)}</span></div>`;
   const homeFor = (s) => (s && s.papel === 'tecnico' ? '#/minhas-os' : '#/dashboard');
 
   function route() {
@@ -72,14 +74,25 @@
     const { path, params } = parseHash();
     const sess = VG.Auth.current();
 
-    // 1) Link exclusivo da OS (técnico/cliente) — não exige login
+    // 1) Link exclusivo da OS (técnico/cliente) — não exige login; validado no servidor
     const pub = path.match(PUBLIC_LINK);
     if (pub) {
-      const r = VG.Auth.resolveLink(pub[1], pub[2]);
-      document.title = r.os ? `OS #${r.os.numero} · Vegas` : 'Link da OS · Vegas';
       shellMounted = false;
-      if (r.erro) return VG.Portal.renderErro(app(), r.erro);
-      return VG.Portal.render(app(), r.os.id, r.papel);
+      const seq = ++routeSeq;
+      app().innerHTML = bootHTML('Abrindo ordem de serviço…');
+      VG.Auth.resolveLink(pub[1], pub[2]).then((r) => {
+        if (seq !== routeSeq) return;
+        document.title = r.os ? `OS #${r.os.numero} · Vegas` : 'Link da OS · Vegas';
+        if (r.erro) return VG.Portal.renderErro(app(), r.erro);
+        VG.Portal.render(app(), r.os.id, r.papel);
+      });
+      return;
+    }
+    routeSeq++;
+    if (VG.Store.isPublic()) {
+      VG.Store.setPublic(null);
+      // ao sair de um link público sem login, os dados daquela OS não ficam na memória
+      if (!sess) VG.Store.clear();
     }
 
     // 2) Login
@@ -156,8 +169,8 @@
       if (!user.value.trim() || !pass.value) { err.textContent = 'Informe usuário e senha.'; return; }
       const btn = VG.$('#lg-btn');
       VG.setBusy(btn, true, 'Entrando…');
-      setTimeout(() => {
-        const r = VG.Auth.login(user.value.trim(), pass.value);
+      (async () => {
+        const r = await VG.Auth.login(user.value.trim(), pass.value);
         if (!r.ok) {
           VG.setBusy(btn, false);
           err.textContent = r.erro;
@@ -167,8 +180,9 @@
         }
         S().write('last_user', r.session.usuario);
         VG.toast(`Bem-vinda(o), ${r.session.nome.split(' ')[0]}.`, 'success');
-        location.hash = homeFor(r.session);
-      }, 350);
+        shellMounted = false;
+        go(homeFor(r.session));
+      })();
     };
   }
 
@@ -270,25 +284,59 @@
   }
 
   /* ---------- INIT ---------- */
-  function refresh() { shellMounted = false; route(); }
+  async function sincronizar(forcar) {
+    const sess = VG.Auth.current();
+    if (!sess || VG.Store.isPublic()) return;
+    if (!forcar) {
+      if (document.hidden || VG.Store.pendentes() > 0) return;
+      if (document.querySelector('.modal-backdrop, .sigpad')) return;
+      const a = document.activeElement;
+      if (a && a.matches && a.matches('input, textarea, select')) return;
+    }
+    try {
+      const rev = await VG.Store.call('rev', {}, { silencioso: true });
+      if (rev === VG.Store.rev() && !forcar) return;
+      await VG.Auth.restore();
+      if (!document.querySelector('.modal-backdrop, .sigpad') && VG.Store.pendentes() === 0) { shellMounted = false; route(); }
+    } catch (e) {
+      if (!VG.Auth.current()) { location.hash = '#/login'; route(); }
+    }
+  }
 
-  function init() {
-    try { S().ensureSeed(); }
-    catch (e) { console.error(e); }
+  async function init() {
     Theme.apply(Theme.get());
-    window.addEventListener('hashchange', route);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
-    // Atualiza a tela quando outra aba altera os dados (ex.: cliente assinou em outra aba)
-    window.addEventListener('storage', (e) => {
-      if (!e.key || !e.key.startsWith('vegas_os_')) return;
-      if (e.key === 'vegas_os_theme') return Theme.apply(Theme.get());
-      if (e.key === 'vegas_os_session' && !VG.Auth.current() && !PUBLIC_LINK.test(parseHash().path)) { location.hash = '#/login'; return; }
-      if (e.key === 'vegas_os_ordens' && !document.querySelector('.modal-backdrop') && !document.querySelector('.sigpad') && !document.activeElement.matches('input,textarea,select')) route();
+    const cfgApi = window.VG_CONFIG && window.VG_CONFIG.API_URL;
+    if (window.VG_CONFIG && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(String(cfgApi || '').trim())) {
+      app().innerHTML = `<div class="boot" style="padding:1.5rem;text-align:center">${VG.logoImg('boot__logo')}
+        <h2 style="color:#fff;font-size:1.1rem;margin:0">Falta configurar o servidor</h2>
+        <p style="max-width:460px;margin:0;line-height:1.5">Abra o arquivo <code>js/config.js</code> no GitHub e cole o endereço do App da Web do Apps Script (termina em <code>/exec</code>). Veja o passo a passo no LEIA-ME.</p></div>`;
+      return;
+    }
+    app().innerHTML = bootHTML('Carregando…');
+    // links externos (telefone, e-mail) fora do quadro do Apps Script
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest && e.target.closest('a[href^="tel:"], a[href^="mailto:"]');
+      if (a) { e.preventDefault(); window.open(a.getAttribute('href'), '_blank'); }
     });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+    const boot = window.VG_BOOT || {};
+    if (boot.os && boot.t) {
+      // aberto por link exclusivo: ?os=1045&t=TOKEN
+      history.replaceState(null, '', location.pathname + (window.VG_CONFIG && window.VG_CONFIG.API_URL ? '' : location.search) + `#/os/${boot.os}/${boot.t}`);
+    } else if (VG.Auth.current()) {
+      try { await VG.Auth.restore(); }
+      catch (e) { if (!/sess|acesso/i.test(e.message)) VG.toast(e.message, 'error', 7000); }
+    }
+    window.addEventListener('hashchange', route);
+    setInterval(() => sincronizar(false), 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizar(false); });
     route();
   }
 
-  VG.App = { init, route, refresh, go };
+  function refresh() { shellMounted = false; route(); }
+
+  VG.App = { init, route, refresh, go, sincronizar };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
