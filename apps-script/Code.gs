@@ -134,6 +134,41 @@ const ACOES = {
     return { session: s, snapshot: snapshot_(s) };
   },
 
+  /** Tela inicial do técnico: lista pública só com os nomes dos técnicos ativos */
+  listTecnicos() {
+    return ler_('tecnicos').filter((t) => t.ativo !== false)
+      .map((t) => ({ id: t.id, nome: t.nome, especialidade: t.especialidade || '' }))
+      .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  },
+
+  /** Entrada do técnico tocando no próprio nome (sem senha) */
+  loginTecnico(req) {
+    const t = ler_('tecnicos').find((x) => x.id === String(req.tecnicoId || ''));
+    if (!t || t.ativo === false) throw new Error('Técnico não encontrado ou inativo. Fale com a supervisão.');
+    let u = ler_('users').find((x) => x.papel === 'tecnico' && x.tecnicoId === t.id);
+    return comLock_(() => {
+      if (!u) {
+        // técnico sem usuário (cadastro antigo): cria o acesso automaticamente
+        const usados = {};
+        ler_('users').forEach((x) => (usados[norm_(x.usuario)] = 1));
+        const base = norm_(t.nome).replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'tecnico';
+        let usuario = base, n = 2;
+        while (usados[usuario]) usuario = base + n++;
+        const salt = tok_(16);
+        u = { id: tok_(16).toLowerCase(), usuario: usuario, nome: t.nome, papel: 'tecnico', tecnicoId: t.id, ativo: true, salt: salt, senhaHash: hash_(CFG.SENHA_INICIAL, salt), criadoEm: agora_() };
+      }
+      if (u.ativo === false) throw new Error('O acesso deste técnico está desativado. Fale com a supervisão.');
+      u.ultimoAcesso = agora_();
+      upsert_('users', u);
+      const s = {
+        token: tok_(48), userId: u.id, usuario: u.usuario, nome: t.nome, papel: 'tecnico',
+        tecnicoId: t.id, criadaEm: agora_(), geracao: props_().getProperty('SESS_GEN') || '0',
+      };
+      CacheService.getScriptCache().put('s_' + s.token, JSON.stringify(s), CFG.SESSAO_SEG);
+      return { session: s, snapshot: snapshot_(s) };
+    });
+  },
+
   logout(req) {
     if (req.token) CacheService.getScriptCache().remove('s_' + req.token);
     return true;

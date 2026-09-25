@@ -44,6 +44,14 @@
           const msg = String(r.erro || 'Erro no servidor.');
           if (msg.indexOf('SESSAO:') === 0) {
             const clean = msg.replace('SESSAO:', '').trim();
+            // técnico: renova a entrada automaticamente (ele entra pelo nome, sem senha)
+            const sess = VG.Store.read('session', null);
+            if (sess && sess.papel === 'tecnico' && !o._renovado && !publico && action !== 'loginTecnico' && !/desativ/i.test(clean)) {
+              return VG.Auth.loginTecnico(sess.tecnicoId, { manterDados: true }).then((r) => {
+                if (!r.ok) throw new Error(r.erro);
+                return call(action, Object.assign({}, payload, payload && payload.token ? { token: VG.Store.read('session').token } : {}), Object.assign({}, o, { _renovado: true }));
+              }).then(resolve, (e) => { VG.Store.write('session', null); location.hash = '#/login'; reject(e); });
+            }
             if (!o.silencioso) {
               VG.Store.write('session', null);
               VG.toast(clean, 'warn');

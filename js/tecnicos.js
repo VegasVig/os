@@ -72,16 +72,21 @@
           <div class="field"><label for="tf-tel">Telefone / WhatsApp</label><input id="tf-tel" name="telefone" class="input" data-mask="phone" inputmode="tel" value="${VG.esc(VG.fmtPhone(t.telefone))}"></div>
           <div class="field"><label for="tf-email">E-mail</label><input id="tf-email" name="email" type="email" class="input" value="${VG.esc(t.email || '')}"></div>
           <div class="field span-2"><label for="tf-esp">Especialidade</label><input id="tf-esp" name="especialidade" class="input" placeholder="Ex.: CFTV, alarmes, controle de acesso" value="${VG.esc(t.especialidade || '')}"></div>
-          <hr class="divider span-2" style="margin:.2rem 0">
-          <div class="field"><label for="tf-user">Usuário de acesso<span class="req">*</span></label><input id="tf-user" name="usuario" class="input" autocapitalize="none" autocomplete="off" value="${VG.esc(u ? u.usuario : '')}"><span class="hint">Usado pelo técnico para entrar no sistema.</span></div>
-          <div class="field"><label for="tf-pass">${id ? 'Nova senha (opcional)' : 'Senha inicial'}</label><input id="tf-pass" name="senha" type="password" class="input" autocomplete="new-password" placeholder="${id ? 'Deixe em branco para manter' : 'Em branco = senha padrão do sistema'}"></div>
+          <input type="hidden" id="tf-user" name="usuario" value="${VG.esc(u ? u.usuario : '')}">
+          <input type="hidden" name="senha" value="">
+          <p class="hint span-2" style="margin:.2rem 0">${VG.icon('info')} O técnico entra no sistema tocando no próprio nome, na tela inicial. Não precisa de senha.</p>
           <label class="check span-2"><input type="checkbox" name="ativo" ${t.ativo !== false ? 'checked' : ''}> Técnico ativo (pode receber OS e acessar o sistema)</label>
         </form>`,
       onOpen: (m) => {
         VG.bindMasks(m);
         const nome = m.querySelector('#tf-nome'), user = m.querySelector('#tf-user');
-        if (!id) nome.addEventListener('input', () => { if (!user.dataset.touched) user.value = VG.norm(nome.value.split(' ')[0]).replace(/[^a-z0-9]/g, ''); });
-        user.addEventListener('input', () => (user.dataset.touched = '1'));
+        // usuário interno gerado a partir do nome (não aparece para o técnico)
+        if (!id) nome.addEventListener('input', () => {
+          const base = VG.norm(nome.value).trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'tecnico';
+          const usados = new Set(S().list('users').map((x) => VG.norm(x.usuario)));
+          let v = base, n = 2; while (usados.has(v)) v = base + n++;
+          user.value = v;
+        });
       },
       actions: [
         { label: 'Cancelar' },
@@ -89,7 +94,7 @@
           const fd = Object.fromEntries(new FormData(m.el.querySelector('#tf')));
           const usuario = VG.norm(fd.usuario).replace(/\s+/g, '');
           if (!fd.nome.trim()) { VG.toast('Informe o nome do técnico.', 'warn'); return false; }
-          if (!/^[a-z0-9._-]{3,}$/.test(usuario)) { VG.toast('O usuário precisa ter 3 ou mais letras ou números, sem espaços.', 'warn'); return false; }
+          if (!/^[a-z0-9._-]{3,}$/.test(usuario)) { VG.toast('Informe o nome completo do técnico.', 'warn'); return false; }
           const conflito = S().list('users').find((x) => VG.norm(x.usuario) === usuario && (!u || x.id !== u.id));
           if (conflito) { VG.toast('Este usuário já está em uso. Escolha outro.', 'warn'); return false; }
           if (fd.senha) { const v = VG.Auth.validarSenha(fd.senha); if (v) { VG.toast(v, 'warn'); return false; } }
@@ -105,7 +110,7 @@
 
           // mantém o nome atualizado nas OS em aberto
           if (id) S().list('ordens').filter((o) => o.tecnicoId === id && o.status !== 'concluida').forEach((o) => { o.tecnicoNome = obj.nome; S().save('ordens', o); });
-          VG.toast(id ? 'Técnico atualizado.' : `Técnico cadastrado. Usuário: ${usuario}`, 'success');
+          VG.toast(id ? 'Técnico atualizado.' : `Técnico ${obj.nome} cadastrado. Ele já aparece na tela de entrada.`, 'success');
           done && done();
         } },
       ],
@@ -199,7 +204,7 @@
           <input type="file" id="tcsv-file" accept=".csv,text/csv" class="sr-only">
         </label>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1rem;flex-wrap:wrap">
-          <span class="hint">Só "nome" é obrigatório. Usuário em branco é criado a partir do primeiro nome; senha em branco usa a senha inicial do sistema.</span>
+          <span class="hint">Só "nome" é obrigatório. As colunas usuario e senha são opcionais (o técnico entra tocando no próprio nome).</span>
           <button type="button" class="btn btn-sm" id="tcsv-model">${VG.icon('download')}<span>Baixar modelo CSV</span></button>
         </div>
         <div id="tcsv-step2" class="hidden"></div>`,
@@ -271,7 +276,7 @@
     VG.modal({
       title: 'Acessos criados', size: 'lg',
       body: `
-        <p style="margin-top:0">Repasse a cada técnico o usuário abaixo. Quem ficou com a <strong>senha inicial</strong> deve trocá-la no primeiro acesso.</p>
+        <p style="margin-top:0">Pronto! Estes técnicos já aparecem na tela de entrada: cada um toca em <strong>Técnico</strong> e depois no próprio nome.</p>
         <div class="table-wrap"><table class="table"><thead><tr><th>Técnico</th><th>Usuário</th><th>Senha</th></tr></thead><tbody>
           ${tecnicos.map((t, i) => `<tr><td>${VG.esc(t.nome)}</td><td><span class="tag">${VG.esc(t.usuario)}</span></td><td class="faint">${items[i] && items[i].senha ? 'a definida no arquivo' : 'senha inicial do sistema'}</td></tr>`).join('')}
         </tbody></table></div>`,

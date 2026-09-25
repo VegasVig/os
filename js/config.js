@@ -5,5 +5,5 @@
    https://script.google.com/macros/s/AKfycb.../exec
    ========================================================= */
 window.VG_CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbxNBVhKA1sHotDOEBv7FWTEp7kkGcjjxeVX3LNvroI0qTN_0txJjpA8j-NTonmZlD1m/exec',
+  API_URL: 'COLE_AQUI_O_ENDERECO_DO_APPS_SCRIPT',
 };

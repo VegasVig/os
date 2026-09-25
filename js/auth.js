@@ -82,6 +82,26 @@
       }
     },
 
+    /** Nomes dos técnicos ativos para a tela de entrada */
+    listTecnicos() {
+      return VG.Store.call('listTecnicos', {}, { semCredencial: true, silencioso: true });
+    },
+
+    /** Técnico entra tocando no próprio nome */
+    async loginTecnico(tecnicoId, opts) {
+      try {
+        VG.Store.setPublic(null);
+        const r = await VG.Store.call('loginTecnico', { tecnicoId }, { semCredencial: true, silencioso: true });
+        const session = Object.assign({}, r.session, { expiraEm: Date.now() + 30 * 24 * 3600 * 1000 });
+        VG.Store.write('session', session);
+        VG.Store.write('last_tecnico', { id: r.session.tecnicoId, nome: r.session.nome });
+        if (!(opts && opts.manterDados)) VG.Store.load(r.snapshot);
+        return { ok: true, session };
+      } catch (e) {
+        return { ok: false, erro: e.message };
+      }
+    },
+
     /** Recarrega os dados do servidor usando a sessão salva */
     async restore() {
       const s = this.current();

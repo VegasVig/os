@@ -199,6 +199,7 @@
     shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/>',
     pen: '<path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.59 7.59"/><circle cx="11" cy="11" r="2"/>',
+    chevron: '<path d="m9 6 6 6-6 6"/>',
     back: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
     message: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
     filter: '<path d="M22 3H2l8 9.46V19l4 2v-8.54z"/>',
@@ -282,12 +283,12 @@
     return api;
   };
 
-  VG.confirm = (msg, { title = 'Confirmar', ok = 'Confirmar', danger = false } = {}) =>
+  VG.confirm = (msg, { title = 'Confirmar', ok = 'Confirmar', danger = false, html = false } = {}) =>
     new Promise((resolve) => {
       let answered = false;
       VG.modal({
         title, size: 'sm',
-        body: `<p style="margin:0">${VG.esc(msg)}</p>`,
+        body: `<p style="margin:0">${html ? msg : VG.esc(msg)}</p>`,
         onClose: () => { if (!answered) resolve(false); },
         actions: [
           { label: 'Voltar', cls: 'btn-ghost' },

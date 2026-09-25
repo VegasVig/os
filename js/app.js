@@ -96,10 +96,10 @@
     }
 
     // 2) Login
-    if (path === '/login' || !sess) {
+    if (path.indexOf('/login') === 0 || !sess) {
       if (sess) return go(homeFor(sess));
       shellMounted = false;
-      return renderLogin();
+      return renderLogin(path.split('/')[2]);
     }
 
     // 3) Rotas internas
@@ -133,13 +133,68 @@
   }
 
   /* ---------- LOGIN ---------- */
-  function renderLogin() {
+  function renderLogin(modo) {
     document.title = 'Entrar · Vegas OS';
+    const empresa = VG.esc(S().getConfig().empresa.nome);
+    const topo = `<div class="login__logo">${VG.logoImg('logo--fixed-dark')}</div><p class="login__title">Controle de Ordens de Serviço</p>`;
+    const rodape = `<div class="login__foot">${VG.icon('shield')}<span>Acesso restrito · ${empresa}</span></div>`;
+
+    /* ----- 1) Escolha do perfil ----- */
+    if (modo !== 'supervisora' && modo !== 'tecnico') {
+      const ult = S().read('last_tecnico', null);
+      app().innerHTML = `
+        <main class="login"><div class="login__card">
+          ${topo}
+          ${ult ? `<button type="button" class="login-cont" id="lg-cont">
+              <span class="avatar">${VG.esc(VG.initials(ult.nome))}</span>
+              <span><small>Continuar como</small><b>${VG.esc(ult.nome)}</b></span>${VG.icon('chevron')}</button>` : ''}
+          <p class="login__ask">Como você vai entrar?</p>
+          <div class="login-roles">
+            <a class="login-role" href="#/login/tecnico">${VG.icon('wrench')}<b>Técnico</b><span>Ver minhas OS</span></a>
+            <a class="login-role" href="#/login/supervisora">${VG.icon('shield')}<b>Supervisora</b><span>Usuário e senha</span></a>
+          </div>
+          ${rodape}
+        </div></main>`;
+      const c = VG.$('#lg-cont');
+      if (c) c.onclick = () => entrarTecnico(ult, c);
+      return;
+    }
+
+    /* ----- 2) Técnico: escolhe o próprio nome ----- */
+    if (modo === 'tecnico') {
+      app().innerHTML = `
+        <main class="login"><div class="login__card login__card--wide">
+          ${topo}
+          <div class="login__back"><a class="btn btn-ghost btn-sm" href="#/login">${VG.icon('back')}<span>Voltar</span></a><b>Quem é você?</b></div>
+          <div class="input-group" style="margin-bottom:.8rem">${VG.icon('search')}<input class="input" id="lg-busca" placeholder="Procurar meu nome" autocomplete="off"></div>
+          <div class="tec-grid" id="lg-tecs"><div style="grid-column:1/-1;display:grid;place-items:center;padding:1.5rem"><span class="spinner"></span></div></div>
+          ${rodape}
+        </div></main>`;
+      const box = VG.$('#lg-tecs');
+      let lista = [];
+      const desenhar = () => {
+        const q = VG.norm(VG.$('#lg-busca').value);
+        const f = lista.filter((t) => !q || VG.norm(t.nome).includes(q));
+        box.innerHTML = f.length ? f.map((t) => `
+          <button type="button" class="tec-btn" data-id="${VG.esc(t.id)}">
+            <span class="avatar">${VG.esc(VG.initials(t.nome))}</span>
+            <span><b>${VG.esc(t.nome)}</b>${t.especialidade ? `<small>${VG.esc(t.especialidade)}</small>` : ''}</span>
+          </button>`).join('')
+          : `<p class="faint" style="grid-column:1/-1;text-align:center;margin:1rem 0">${lista.length ? 'Nenhum nome encontrado.' : 'Nenhum técnico cadastrado. Peça à supervisão para cadastrar a equipe.'}</p>`;
+        VG.$$('.tec-btn', box).forEach((b) => (b.onclick = () => entrarTecnico(lista.find((t) => t.id === b.dataset.id), b)));
+      };
+      VG.$('#lg-busca').addEventListener('input', desenhar);
+      VG.Auth.listTecnicos().then((l) => { lista = l || []; desenhar(); })
+        .catch((e) => { box.innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--st-red)">${VG.esc(e.message)}</p>`; });
+      return;
+    }
+
+    /* ----- 3) Supervisora: usuário e senha ----- */
     app().innerHTML = `
       <main class="login">
         <div class="login__card">
-          <div class="login__logo">${VG.logoImg('logo--fixed-dark')}</div>
-          <p class="login__title">Controle de Ordens de Serviço</p>
+          ${topo}
+          <div class="login__back"><a class="btn btn-ghost btn-sm" href="#/login">${VG.icon('back')}<span>Voltar</span></a><b>Supervisora</b></div>
           <form id="login-form" novalidate autocomplete="on">
             <div class="field"><label for="lg-user">Usuário</label>
               <div class="input-group">${VG.icon('user')}<input id="lg-user" class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div></div>
@@ -149,7 +204,7 @@
             <div class="login__error" id="lg-err" role="alert"></div>
             <button type="submit" class="btn btn-primary btn-lg" id="lg-btn">${VG.icon('lock')}<span>Entrar</span></button>
           </form>
-          <div class="login__foot">${VG.icon('shield')}<span>Acesso restrito · ${VG.esc(S().getConfig().empresa.nome)}</span></div>
+          ${rodape}
         </div>
       </main>`;
     const user = VG.$('#lg-user'), pass = VG.$('#lg-pass'), err = VG.$('#lg-err'), eye = VG.$('#lg-eye');
@@ -178,12 +233,29 @@
           VG.$('.login__card').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
           return;
         }
-        S().write('last_user', r.session.usuario);
+        if (r.session.papel === 'tecnico') S().write('last_tecnico', { id: r.session.tecnicoId, nome: r.session.nome });
+        else S().write('last_user', r.session.usuario);
         VG.toast(`Bem-vinda(o), ${r.session.nome.split(' ')[0]}.`, 'success');
         shellMounted = false;
         go(homeFor(r.session));
       })();
     };
+  }
+
+  async function entrarTecnico(t, btn) {
+    if (!t) return;
+    if (!(await VG.confirm(`Entrar como <strong>${VG.esc(t.nome)}</strong>?`, { title: 'Confirmar técnico', ok: 'Sou eu, entrar', html: true }))) return;
+    VG.setBusy(btn, true);
+    const r = await VG.Auth.loginTecnico(t.id);
+    if (!r.ok) {
+      VG.setBusy(btn, false);
+      if (/inativo|não encontrado/i.test(r.erro)) S().write('last_tecnico', null);
+      VG.toast(r.erro, 'error', 6000);
+      return;
+    }
+    VG.toast(`Olá, ${r.session.nome.split(' ')[0]}!`, 'success');
+    shellMounted = false;
+    go('#/minhas-os');
   }
 
   /* ---------- SHELL ---------- */
@@ -296,7 +368,16 @@
     try {
       const rev = await VG.Store.call('rev', {}, { silencioso: true });
       if (rev === VG.Store.rev() && !forcar) return;
+      const antes = new Set(VG.Store.list('ordens').map((o) => o.id));
       await VG.Auth.restore();
+      if (sess.papel === 'tecnico') {
+        const novas = VG.Store.list('ordens').filter((o) => !antes.has(o.id) && o.tecnicoId === sess.tecnicoId && o.status !== 'concluida');
+        if (novas.length) {
+          const urg = novas.some((o) => o.prioridade === 'urgente');
+          VG.toast(novas.length === 1 ? `Nova OS #${novas[0].numero}${urg ? ' — URGENTE' : ''}: ${novas[0].cliente.nome}` : `${novas.length} novas OS recebidas${urg ? ' (há urgente)' : ''}.`, urg ? 'warn' : 'info', 8000);
+          try { navigator.vibrate && navigator.vibrate(urg ? [200, 100, 200] : 150); } catch (e) {}
+        }
+      }
       if (!document.querySelector('.modal-backdrop, .sigpad') && VG.Store.pendentes() === 0) { shellMounted = false; route(); }
     } catch (e) {
       if (!VG.Auth.current()) { location.hash = '#/login'; route(); }

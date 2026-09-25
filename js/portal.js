@@ -414,10 +414,11 @@
           return;
         }
         if (st === 'aguardando_cliente') {
-          html += notice('check', '<strong>Atendimento finalizado.</strong> Agora o cliente precisa conferir e assinar. Envie o link abaixo ou colete a assinatura neste aparelho.');
-          html += `<section class="panel"><div class="panel__head"><h3>${VG.icon('share')}Enviar para o cliente</h3></div>
-            <div class="panel__body stack">${VG.OS.linkCard(os, 'cliente')}
-              <a class="btn btn-primary btn-lg" href="${clienteHash(os)}" style="justify-self:center;width:100%;max-width:420px">${VG.icon('pen')}<span>Coletar assinatura do cliente neste aparelho</span></a>
+          html += notice('check', '<strong>Atendimento finalizado.</strong> Agora peça ao cliente para conferir e assinar aqui no seu celular.');
+          html += `<section class="panel"><div class="panel__body stack" style="justify-items:center;text-align:center">
+              <a class="btn btn-primary btn-lg" href="${clienteHash(os)}" style="width:100%;max-width:420px">${VG.icon('pen')}<span>Coletar assinatura do cliente</span></a>
+              <details style="width:100%;text-align:left"><summary class="faint" style="cursor:pointer;text-align:center">O cliente não está no local? Enviar link para ele assinar</summary>
+                <div style="margin-top:.8rem">${VG.OS.linkCard(os, 'cliente')}</div></details>
             </div></section>`;
           html += atendimentoHTML(os);
           body.innerHTML = html;

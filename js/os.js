@@ -278,7 +278,7 @@
           S().log(`OS #${nova.numero} criada`, nova.id, 'plus');
           if (tec) S().log(`Técnico ${tec.nome.split(' ')[0]} recebeu a OS #${nova.numero}`, nova.id, 'user');
           location.hash = '#/os/ver/' + nova.id;
-          setTimeout(() => criadaModal(nova), 120);
+          VG.toast(tec ? `OS #${nova.numero} criada e enviada para ${tec.nome}. Ela já aparece na lista do técnico.` : `OS #${nova.numero} criada. Escolha o técnico na própria OS.`, 'success', 6000);
         } else {
           const antes = { tecnicoId: os.tecnicoId };
           Object.assign(os, { prioridade: fd.prioridade, tipo: fd.tipo, clienteId: fd.clienteId, cliente, equipamento, problema: fd.problema.trim(), prazoData: fd.prazoData, prazoHora: fd.prazoHora });
@@ -429,7 +429,7 @@
         </section>
 
         ${os.status === 'cancelada' ? `<div class="notice">${VG.icon('ban')}<div><strong>OS cancelada</strong> em ${VG.fmtDateTime(os.canceladaEm || (os.historico.slice(-1)[0] || {}).dataHora)}. Motivo: ${VG.esc(os.canceladaMotivo || '—')}</div></div>` : ''}
-        ${os.status === 'aguardando_cliente' ? `<div class="notice notice--info">${VG.icon('pen')}<div>Atendimento finalizado pelo técnico. Falta a assinatura do cliente — envie o <button class="btn btn-ghost btn-sm" id="d-link-cli" style="display:inline-flex;height:auto;padding:0 .2rem;text-decoration:underline">link do cliente</button>.</div></div>` : ''}
+        ${os.status === 'aguardando_cliente' ? `<div class="notice notice--info">${VG.icon('pen')}<div>Atendimento finalizado pelo técnico. Falta a assinatura do cliente, que o técnico coleta no próprio celular. Se precisar, também é possível enviar o <button class="btn btn-ghost btn-sm" id="d-link-cli" style="display:inline-flex;height:auto;padding:0 .2rem;text-decoration:underline">link do cliente</button>.</div></div>` : ''}
 
         <div class="detail-grid">
           <div class="stack">
@@ -461,6 +461,7 @@
           </div>
 
           <div class="stack">
+            ${!final ? tecnicoPanelHTML(os) : ''}
             <section class="panel"><div class="panel__head"><h3>${VG.icon('pen')}Assinaturas</h3></div>
               <div class="panel__body sig-view" style="grid-template-columns:1fr">${sigHTML('Técnico', os.assinaturaTecnico)}${sigHTML('Cliente', os.assinaturaCliente)}</div></section>
             <section class="panel"><div class="panel__head"><h3>${VG.icon('clock')}Histórico</h3></div>
@@ -472,32 +473,101 @@
     const L = VG.$('#d-links', el); if (L) L.onclick = () => linkModal(S().get('ordens', id));
     const LC = VG.$('#d-link-cli', el); if (LC) LC.onclick = () => linkModal(S().get('ordens', id));
     const C = VG.$('#d-cancel', el); if (C) C.onclick = () => cancelar(id, () => renderDetail(el, id));
+    const TB = VG.$('#d-tec-ok', el);
+    if (TB) TB.onclick = () => {
+      const novo = VG.$('#d-tec', el).value;
+      const o = S().get('ordens', id);
+      if ((novo || null) === (o.tecnicoId || null)) return VG.toast('Este técnico já é o responsável.', 'info');
+      if (o.status === 'em_atendimento' && o.tecnicoId) {
+        VG.confirm(`${o.tecnicoNome} já iniciou este atendimento. Trocar de técnico mesmo assim?`, { title: 'Trocar técnico', ok: 'Trocar' }).then((sim) => { if (sim) { atribuir(o, novo); renderDetail(el, id); } });
+        return;
+      }
+      atribuir(o, novo);
+      renderDetail(el, id);
+    };
     bindThumbs(VG.$('#d-fotos', el), a.fotos || { antes: [], depois: [] });
+  }
+
+  /* ---------- ESCOLHER TÉCNICO NA OS ---------- */
+  function tecnicoPanelHTML(os) {
+    const tecs = S().list('tecnicos').filter((t) => t.ativo !== false || t.id === os.tecnicoId).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    return `
+      <section class="panel"><div class="panel__head"><h3>${VG.icon('user')}Técnico responsável</h3></div>
+        <div class="panel__body stack">
+          <div class="field"><label for="d-tec">Quem vai fazer o serviço</label>
+            <select id="d-tec" class="select">${VG.options(tecs.map((t) => ({ value: t.id, label: t.nome + (t.especialidade ? ' — ' + t.especialidade : '') })), os.tecnicoId || '', 'Sem técnico definido')}</select></div>
+          <button class="btn btn-primary" id="d-tec-ok">${VG.icon('check')}<span>${os.tecnicoId ? 'Trocar técnico' : 'Enviar para o técnico'}</span></button>
+          <span class="hint">A OS aparece na hora na lista do técnico escolhido, marcada com a prioridade <b>${VG.esc((VG.PRIORIDADES[os.prioridade] || {}).label || os.prioridade)}</b>.</span>
+        </div></section>`;
+  }
+
+  function atribuir(os, tecnicoId) {
+    const tec = tecnicoId ? S().get('tecnicos', tecnicoId) : null;
+    const autor = me().nome || 'Supervisora';
+    os.tecnicoId = tec ? tec.id : null;
+    os.tecnicoNome = tec ? tec.nome : '';
+    os.tokenTecnico = VG.token(10);
+    if (tec) {
+      S().hist(os, `OS enviada para ${tec.nome}.`, autor);
+      S().log(`Técnico ${tec.nome.split(' ')[0]} recebeu a OS #${os.numero}`, os.id, 'user');
+      if (os.status === 'aberta') os.status = 'aguardando_tecnico';
+      VG.toast(`OS #${os.numero} enviada para ${tec.nome}.`, 'success');
+    } else {
+      if (os.status === 'aguardando_tecnico') os.status = 'aberta';
+      S().hist(os, 'Técnico removido da OS.', autor);
+      VG.toast('Técnico removido da OS.', 'info');
+    }
+    S().save('ordens', os);
   }
 
   /* ---------- MINHAS OS (técnico logado) ---------- */
   function renderMinhas(el) {
     const s = me();
-    const ordem = { em_atendimento: 0, aguardando_tecnico: 1, aberta: 2, aguardando_cliente: 3, concluida: 4, cancelada: 5 };
     const prio = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
-    const list = S().list('ordens').filter((o) => o.tecnicoId === s.tecnicoId && o.status !== 'cancelada')
-      .sort((a, b) => ordem[a.status] - ordem[b.status] || prio[a.prioridade] - prio[b.prioridade] || b.numero - a.numero);
-    const pend = list.filter((o) => !FINAIS.includes(o.status));
-    const hist = list.filter((o) => o.status === 'concluida').slice(0, 12);
-    const card = (o) => `
-      <a class="panel os-card" href="#/atendimento/${o.id}">
-        <div class="os-card__top"><span class="os-card__num">OS #${o.numero}</span>${VG.badge(o.status)}</div>
+    const prazo = (o) => (o.prazoData ? o.prazoData + ' ' + (o.prazoHora || '23:59') : '9999');
+    const minhas = S().list('ordens').filter((o) => o.tecnicoId === s.tecnicoId && o.status !== 'cancelada');
+    const porUrgencia = (a, b) => (prio[a.prioridade] ?? 2) - (prio[b.prioridade] ?? 2) || prazo(a).localeCompare(prazo(b)) || a.numero - b.numero;
+    const andamento = minhas.filter((o) => o.status === 'em_atendimento').sort(porUrgencia);
+    const fazer = minhas.filter((o) => o.status === 'aguardando_tecnico' || o.status === 'aberta').sort(porUrgencia);
+    const assinatura = minhas.filter((o) => o.status === 'aguardando_cliente').sort(porUrgencia);
+    const feitas = minhas.filter((o) => o.status === 'concluida').sort((a, b) => b.numero - a.numero).slice(0, 10);
+    const P = VG.PRIORIDADES;
+
+    const card = (o) => {
+      const atrasada = o.prazoData && o.status !== 'concluida' && new Date(`${o.prazoData}T${o.prazoHora || '23:59'}`) < new Date();
+      const acao = { aguardando_tecnico: 'Abrir e iniciar', aberta: 'Abrir e iniciar', em_atendimento: 'Continuar atendimento', aguardando_cliente: 'Coletar assinatura', concluida: 'Ver OS' }[o.status];
+      return `
+      <a class="panel os-card os-card--${o.prioridade}" href="#/atendimento/${o.id}">
+        <div class="os-card__top">
+          <span class="prio-tag prio-tag--${o.prioridade}">${o.prioridade === 'urgente' ? VG.icon('alert') : ''}${VG.esc((P[o.prioridade] || {}).label || o.prioridade)}</span>
+          <span class="os-card__num">OS #${o.numero}</span>
+        </div>
         <div class="os-card__client">${VG.esc(o.cliente.nome)}</div>
-        <div class="os-card__row">${VG.icon('pin')}<span>${VG.esc([o.cliente.endereco, o.cliente.numero, o.cliente.bairro].filter(Boolean).join(', ') || '—')}</span></div>
-        <div class="os-card__row">${VG.icon('alert')}<span>${VG.esc(o.problema.length > 90 ? o.problema.slice(0, 90) + '…' : o.problema)}</span></div>
-        <div class="os-card__row" style="justify-content:space-between">${VG.prioBadge(o.prioridade)}<span>${o.prazoData ? VG.icon('clock') + ' ' + VG.fmtInputDate(o.prazoData) + ' ' + VG.esc(o.prazoHora || '') : ''}</span></div>
+        <div class="os-card__row">${VG.icon('pin')}<span>${VG.esc([[o.cliente.endereco, o.cliente.numero].filter(Boolean).join(', '), o.cliente.bairro, o.cliente.cidade].filter(Boolean).join(' · ') || '—')}</span></div>
+        <div class="os-card__row">${VG.icon('wrench')}<span><b>${VG.esc(o.tipo)}</b> · ${VG.esc(o.problema.length > 80 ? o.problema.slice(0, 80) + '…' : o.problema)}</span></div>
+        <div class="os-card__foot">
+          <span class="${atrasada ? 'os-card__late' : ''}">${o.prazoData ? VG.icon('clock') + (atrasada ? 'Atrasada · ' : 'Prazo ') + VG.fmtInputDate(o.prazoData) + ' ' + VG.esc(o.prazoHora || '') : VG.badge(o.status)}</span>
+          <span class="os-card__go">${VG.esc(acao || 'Abrir')}${VG.icon('chevron')}</span>
+        </div>
       </a>`;
+    };
+    const grupo = (titulo, icon, lista, vazio) => lista.length
+      ? `<h2 class="os-group">${VG.icon(icon)}${titulo}<span class="count">${lista.length}</span></h2><div class="os-cards">${lista.map(card).join('')}</div>` : (vazio || '');
+    const cont = (k) => fazer.concat(andamento).filter((o) => o.prioridade === k).length;
+    const pend = andamento.length + fazer.length + assinatura.length;
+
     el.innerHTML = `
       <div class="page">
-        <div class="page-head"><div><h1>Minhas ordens de serviço</h1><p>${pend.length ? `${pend.length} ${pend.length > 1 ? 'atendimentos pendentes' : 'atendimento pendente'}.` : 'Nenhum atendimento pendente.'}</p></div></div>
-        ${pend.length ? `<div class="os-cards">${pend.map(card).join('')}</div>` : `<section class="panel">${VG.empty('check', 'Tudo em dia', 'Quando a supervisão enviar uma OS para você, ela aparece aqui.')}</section>`}
-        ${hist.length ? `<h2 style="font-size:1.1rem;margin-top:.6rem">Concluídas recentemente</h2><div class="os-cards">${hist.map(card).join('')}</div>` : ''}
+        <div class="page-head"><div><h1>Olá, ${VG.esc((s.nome || '').split(' ')[0])}</h1>
+          <p>${pend ? `Você tem ${pend} ${pend > 1 ? 'ordens de serviço' : 'ordem de serviço'} para fazer.` : 'Nenhuma OS pendente no momento.'}</p></div>
+          <div class="page-head__actions"><button class="btn" id="mo-sync">${VG.icon('refresh')}<span>Atualizar</span></button></div></div>
+        ${pend ? `<div class="prio-summary">${['urgente', 'alta', 'normal', 'baixa'].map((k) => `<span class="prio-tag prio-tag--${k}">${VG.esc(P[k].label)} <b>${cont(k)}</b></span>`).join('')}</div>` : ''}
+        ${grupo('Em andamento', 'play', andamento)}
+        ${grupo('A fazer — por urgência', 'flag', fazer, !andamento.length && !assinatura.length ? `<section class="panel">${VG.empty('check', 'Tudo em dia', 'Quando a supervisão escolher você para uma OS, ela aparece aqui automaticamente.')}</section>` : '')}
+        ${grupo('Falta a assinatura do cliente', 'pen', assinatura)}
+        ${feitas.length ? `<details class="os-done"><summary>${VG.icon('check')}Concluídas recentemente (${feitas.length})</summary><div class="os-cards">${feitas.map(card).join('')}</div></details>` : ''}
       </div>`;
+    VG.$('#mo-sync', el).onclick = async (e) => { VG.setBusy(e.currentTarget, true); await VG.App.sincronizar(true); };
   }
 
   VG.OS = { renderList, renderForm, renderDetail, renderMinhas, linkModal, linkCard, bindLinkCards, cancelar, fotosHTML, bindThumbs, materiaisHTML, sigHTML, matches };
