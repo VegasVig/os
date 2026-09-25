@@ -8,6 +8,21 @@ O sistema tem duas partes:
 
 O sistema começa vazio, só com o usuário `supervisora`.
 
+## Supervisoras
+| Usuário | Senha inicial | O que vê |
+|---|---|---|
+| `luzia` | `Vegas4747@` | Só as OS que a Luzia abriu |
+| `talita` | `Vegas4747!` | Só as OS que a Talita abriu |
+| `supervisora` | `Vegas4747@!` | Supervisão geral: todas as OS |
+
+- **Cada supervisora vê só as OS dela** no Dashboard, na lista de OS, nos Relatórios e na atividade recente. Uma não consegue abrir nem alterar a OS da outra, nem pelo endereço.
+- **Clientes e técnicos são compartilhados.** As duas usam o mesmo cadastro.
+- **O técnico recebe as OS das duas**, na mesma lista por urgência.
+- **Quem abriu a OS** aparece no detalhe: "Aberta em … por Luzia".
+- **Importar backup e Apagar todos os dados** ficam só com a supervisão geral, porque mexem nas OS de todas.
+- **OS abertas antes desta atualização** não têm dona. Por isso, continuam aparecendo para as duas.
+- **Troca de senha:** cada uma troca a própria em **Configurações → Alterar minha senha**.
+
 ## Como funciona no dia a dia
 1. **Tela inicial:** ao abrir o sistema, a pessoa escolhe **Técnico** ou **Supervisora**.
 2. **Supervisora:**

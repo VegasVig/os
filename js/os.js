@@ -414,7 +414,7 @@
           <div>
             <div class="os-hero__num"><h1>OS #${os.numero}</h1>${VG.badge(os.status, true)}${VG.prioBadge(os.prioridade)}</div>
             <div class="os-hero__meta">
-              <span>${VG.icon('calendar')}Aberta em ${VG.fmtDateTime(os.criadaEm)}</span>
+              <span>${VG.icon('calendar')}Aberta em ${VG.fmtDateTime(os.criadaEm)}${os.criadaPor ? ' por ' + VG.esc(os.criadaPor) : ''}</span>
               <span>${VG.icon('wrench')}${VG.esc(os.tipo)}</span>
               <span>${VG.icon('user')}${VG.esc(os.tecnicoNome || 'Sem técnico')}</span>
               ${os.prazoData ? `<span>${VG.icon('clock')}Prazo ${VG.fmtInputDate(os.prazoData)} ${VG.esc(os.prazoHora || '')}</span>` : ''}

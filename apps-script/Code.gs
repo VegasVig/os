@@ -26,7 +26,7 @@ const CFG = {
   MAX_TENTATIVAS: 5,
   BLOQUEIO_SEG: 60,
   MAX_ATIVIDADES: 300,
-  VERSAO_BANCO: '1',
+  VERSAO_BANCO: '2',
 };
 
 const TABELAS = {
@@ -38,6 +38,16 @@ const TABELAS = {
   config:     { aba: 'Config',     campos: [] },
 };
 const PAPEIS_SUP = ['supervisora'];
+
+/**
+ * Supervisoras: cada uma entra com a própria senha e vê apenas as OS que abriu.
+ * O usuário "supervisora" (geral) continua vendo todas as OS.
+ * Criadas automaticamente se ainda não existirem (troque as senhas depois).
+ */
+const SUPERVISORAS = [
+  { usuario: 'luzia', nome: 'Luzia', senha: 'Vegas4747@' },
+  { usuario: 'talita', nome: 'Talita', senha: 'Vegas4747!' },
+];
 
 /* =========================================================================
    PÁGINA
@@ -81,7 +91,8 @@ function instalar() {
   const info = garantirBanco_();
   Logger.log('Banco de dados (planilha): ' + info.planilha);
   Logger.log('Pasta de arquivos (Drive): ' + info.pasta);
-  Logger.log('Usuário inicial: supervisora · senha: ' + CFG.SENHA_INICIAL + ' (troque após o primeiro acesso)');
+  Logger.log('Supervisão geral (vê todas as OS): supervisora · senha: ' + CFG.SENHA_INICIAL);
+  Logger.log('Supervisoras: luzia · Vegas4747@   |   talita · Vegas4747!   (cada uma vê só as OS que abriu)');
   return info;
 }
 
@@ -128,6 +139,7 @@ const ACOES = {
     const s = {
       token: tok_(48), userId: u.id, usuario: u.usuario, nome: u.nome, papel: u.papel,
       tecnicoId: u.tecnicoId || null, criadaEm: agora_(), geracao: props_().getProperty('SESS_GEN') || '0',
+      verTodas: u.papel === 'supervisora' && verTodas_(u),
     };
     cache.put('s_' + s.token, JSON.stringify(s), CFG.SESSAO_SEG);
     comLock_(() => { u.ultimoAcesso = agora_(); upsert_('users', u); });
@@ -230,6 +242,8 @@ const ACOES = {
       }
       if (col === 'ordens') {
         const atual = ler_('ordens').find((o) => o.id === obj.id);
+        if (atual && !podeVerOS_(s, atual)) throw new Error('Esta OS foi aberta por outra supervisora.');
+        if (!atual && !obj.criadaPorId) { obj.criadaPorId = s.userId; obj.criadaPor = s.nome; }
         if (atual) obj = mesclarSupervisao_(atual, obj);
         obj = extrairImagens_(obj, 'OS_' + obj.numero);
       }
@@ -312,7 +326,8 @@ const ACOES = {
       os.tokenTecnico = tok_(12);
       os.tokenCliente = tok_(12);
       os.criadaEm = os.criadaEm || agora_();
-      os.criadaPor = os.criadaPor || s.nome;
+      os.criadaPor = s.nome;
+      os.criadaPorId = s.userId;
       os.atualizadoEm = agora_();
       upsert_('ordens', extrairImagens_(os, 'OS_' + os.numero));
       cfg.ultimoNumeroOS = os.numero;
@@ -345,7 +360,7 @@ const ACOES = {
   },
 
   importAll(req) {
-    sessao_(req, PAPEIS_SUP);
+    exigirGeral_(sessao_(req, PAPEIS_SUP));
     const d = req.data || {};
     if (d.app !== 'vegas-os') throw new Error('Arquivo de backup inválido.');
     const users = Array.isArray(d.users) ? d.users : [];
@@ -357,6 +372,7 @@ const ACOES = {
       ['clientes', 'tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
       substituirTudo_('ordens', (Array.isArray(d.ordens) ? d.ordens : []).map((o) => extrairImagens_(o, 'OS_' + o.numero)));
       salvarConfig_(extrairImagens_(Object.assign({}, d.config || {}), 'Logo'));
+      garantirSupervisoras_();
       invalidarSessoes_();
       bump_();
       return true;
@@ -364,10 +380,11 @@ const ACOES = {
   },
 
   resetAll(req) {
-    sessao_(req, PAPEIS_SUP);
+    exigirGeral_(sessao_(req, PAPEIS_SUP));
     return comLock_(() => {
       Object.keys(TABELAS).forEach((c) => substituirTudo_(c, []));
       criarSupervisora_();
+      garantirSupervisoras_();
       invalidarSessoes_();
       bump_();
       return true;
@@ -468,7 +485,7 @@ function mesclarLink_(atual, novo, papel) {
  */
 function mesclarSupervisao_(atual, novo) {
   const ordem = { aberta: 0, aguardando_tecnico: 0, em_atendimento: 1, aguardando_cliente: 2, concluida: 3 };
-  ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'tokenCliente', 'criadaEm', 'numero'].forEach((k) => {
+  ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'tokenCliente', 'criadaEm', 'numero', 'criadaPorId', 'criadaPor'].forEach((k) => {
     if (atual[k] !== undefined) novo[k] = atual[k];
   });
   if (atual.status === 'concluida' || atual.status === 'cancelada') novo.status = atual.status;
@@ -518,8 +535,10 @@ function snapshot_(s) {
     out.users = ler_('users').map(semSenha_);
     out.clientes = ler_('clientes');
     out.tecnicos = ler_('tecnicos');
-    out.ordens = ler_('ordens');
-    out.atividades = ultimasAtividades_(60);
+    out.ordens = ler_('ordens').filter((o) => podeVerOS_(s, o));
+    const minhas = {};
+    out.ordens.forEach((o) => (minhas[o.id] = 1));
+    out.atividades = ultimasAtividades_(300).filter((a) => !a.osId || minhas[a.osId]).slice(0, 60);
     out.config = publicoConfig_(cfg, true);
   } else {
     out.tecnicos = ler_('tecnicos').filter((t) => t.id === s.tecnicoId);
@@ -601,6 +620,35 @@ function mesclarSenha_(u) {
   return u;
 }
 
+/** Usuário que vê todas as OS: o "supervisora" geral (ou quem tiver verTodas marcado) */
+function verTodas_(u) {
+  return !!u && (u.verTodas === true || (u.verTodas === undefined && norm_(u.usuario) === 'supervisora'));
+}
+
+function podeVerOS_(s, os) {
+  if (s.papel !== 'supervisora') return false;
+  const u = ler_('users').find((x) => x.id === s.userId);
+  if (verTodas_(u)) return true;
+  return !os.criadaPorId || os.criadaPorId === s.userId; // OS antigas (sem dona) aparecem para todas
+}
+
+function exigirGeral_(s) {
+  if (!verTodas_(ler_('users').find((x) => x.id === s.userId))) throw new Error('Somente a supervisão geral pode fazer isso.');
+}
+
+/** Cria Luzia e Talita se ainda não existirem (não mexe em senha já trocada) */
+function garantirSupervisoras_() {
+  const users = ler_('users');
+  SUPERVISORAS.forEach((x) => {
+    if (users.some((u) => norm_(u.usuario) === x.usuario)) return;
+    const salt = tok_(16);
+    upsert_('users', {
+      id: tok_(16).toLowerCase(), usuario: x.usuario, nome: x.nome, papel: 'supervisora', ativo: true, verTodas: false,
+      salt: salt, senhaHash: hash_(x.senha, salt), criadoEm: agora_(),
+    });
+  });
+}
+
 function criarSupervisora_() {
   const salt = tok_(16);
   upsert_('users', {
@@ -646,6 +694,7 @@ function garantirBanco_(forcar) {
       if (nomes.indexOf(sh.getName()) < 0 && sh.getLastRow() === 0 && SS_.getSheets().length > 1) SS_.deleteSheet(sh);
     });
     if (!ler_('users').length) criarSupervisora_();
+    garantirSupervisoras_();
     const pasta = pasta_();
     pr.setProperty('DB_OK', CFG.VERSAO_BANCO);
     return { planilha: SS_.getUrl(), pasta: pasta.getUrl() };

@@ -72,15 +72,16 @@
                   ${cfg._planilhaUrl ? `<a class="btn" href="${VG.esc(cfg._planilhaUrl)}" target="_blank" rel="noopener">${VG.icon('sheet')}<span>Abrir planilha</span></a>` : ''}
                   ${cfg._pastaUrl ? `<a class="btn" href="${VG.esc(cfg._pastaUrl)}" target="_blank" rel="noopener">${VG.icon('image')}<span>Abrir pasta de fotos</span></a>` : ''}
                 </div>
+                ${sess && sess.verTodas ? '' : `<p class="hint" style="margin:0">Importar backup e apagar dados ficam disponíveis só para a supervisão geral (usuário <b>supervisora</b>), porque afetam as OS de todas.</p>`}
                 <div style="display:flex;gap:.5rem;flex-wrap:wrap">
                   <button class="btn" id="cf-exp">${VG.icon('download')}<span>Exportar backup</span></button>
-                  <button class="btn" id="cf-imp">${VG.icon('upload')}<span>Importar backup</span></button>
+                  ${sess && sess.verTodas ? `<button class="btn" id="cf-imp">${VG.icon('upload')}<span>Importar backup</span></button>` : ''}
                   <input type="file" accept="application/json,.json" hidden id="cf-imp-file">
                 </div>
-                <div style="display:flex;gap:.5rem;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:.9rem">
+                ${sess && sess.verTodas ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:.9rem">
                   <button class="btn btn-danger" id="cf-reset">${VG.icon('trash')}<span>Apagar todos os dados</span></button>
                 </div>
-                <span class="hint">Apaga clientes, técnicos, OS e usuários da planilha. Faça um backup antes.</span>
+                <span class="hint">Apaga clientes, técnicos, OS e usuários da planilha. Faça um backup antes.</span>` : ''}
               </div></section>
 
             <div class="notice notice--info">${VG.icon('info')}<div><strong>Segurança.</strong> As senhas são conferidas no servidor (Google Apps Script) e nunca chegam ao navegador. Cada link de OS só dá acesso àquela ordem, e o cliente só consegue assinar — não altera o serviço registrado. Troque a senha inicial da supervisora e dos técnicos.</div></div>
@@ -141,7 +142,7 @@
       VG.toast('Backup exportado.', 'success');
     };
     const fileImp = VG.$('#cf-imp-file', el);
-    VG.$('#cf-imp', el).onclick = () => fileImp.click();
+    const bImp = VG.$('#cf-imp', el); if (bImp) bImp.onclick = () => fileImp.click();
     fileImp.onchange = async () => {
       const f = fileImp.files && fileImp.files[0];
       fileImp.value = '';
@@ -162,7 +163,8 @@
       setTimeout(() => { location.hash = '#/login'; VG.App.refresh(); }, 400);
     };
 
-    VG.$('#cf-reset', el).onclick = async () => {
+    const bReset = VG.$('#cf-reset', el);
+    if (bReset) bReset.onclick = async () => {
       if (!(await VG.confirm('Todos os clientes, técnicos, OS e usuários serão apagados da planilha. Fica apenas o usuário "supervisora" com a senha inicial. As fotos já enviadas continuam na pasta do Drive.', { title: 'Apagar todos os dados', ok: 'Apagar tudo', danger: true }))) return;
       const txt = await VG.promptText({ title: 'Confirmação', label: 'Digite APAGAR para confirmar', ok: 'Apagar tudo', danger: true });
       if (txt == null) return;
