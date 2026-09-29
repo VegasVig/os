@@ -468,7 +468,11 @@
   }
   function materiaisHTML(mats) {
     if (!mats || !mats.length) return '<p class="faint" style="margin:0">Nenhum material registrado.</p>';
-    return `<table class="materials"><thead><tr><th>Material</th><th>Quantidade</th></tr></thead><tbody>${mats.map((m) => `<tr><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table>`;
+    const tot = VG.matsTotal(mats);
+    if (tot == null) return `<table class="materials"><thead><tr><th>Material</th><th>Quantidade</th></tr></thead><tbody>${mats.map((m) => `<tr><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table>`;
+    // com valor: mostra unitário e total (itens sem valor ficam com "—", ex.: equipamento em locação)
+    return `<table class="materials"><thead><tr><th>Material</th><th>Quantidade</th><th>Valor unit.</th><th>Total</th></tr></thead><tbody>${mats.map((m) => `<tr><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td><td class="mono-num">${m.valor != null ? VG.esc(VG.fmtMoney(m.valor)) : '<span class="faint">—</span>'}</td><td class="mono-num">${m.valor != null ? VG.esc(VG.fmtMoney(VG.matTotal(m))) : '<span class="faint">—</span>'}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="3"><b>Total dos materiais</b></td><td class="mono-num"><b>${VG.esc(VG.fmtMoney(tot))}</b></td></tr></tfoot></table>`;
   }
 
   function renderDetail(el, id) {

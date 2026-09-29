@@ -66,6 +66,7 @@
   .mat-add { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .mat-add .field:first-child { grid-column: 1 / -1; }
   .mat-add .btn { grid-column: 1 / -1; }
+  .mat-add .field:nth-child(4) { grid-column: 1 / -1; }
 
   .modal-backdrop { place-items: end center; padding: 0; }
   .modal { max-height: 92dvh; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }

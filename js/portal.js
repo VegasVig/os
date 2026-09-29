@@ -128,6 +128,7 @@
             <div class="field"><label for="m-desc">Material</label><input id="m-desc" class="input" placeholder="Ex.: Cabo UTP" list="m-sug"></div>
             <div class="field"><label for="m-qtd">Qtd.</label><input id="m-qtd" class="input" type="number" min="0" step="any" inputmode="decimal" value="1"></div>
             <div class="field"><label for="m-un">Unidade</label><select id="m-un" class="select">${VG.options(VG.UNIDADES, VG.UNIDADES[0])}</select></div>
+            <div class="field"><label for="m-val">Valor unit. (R$)</label><input id="m-val" class="input" inputmode="decimal" placeholder="Opcional" autocomplete="off"></div>
             <button type="button" class="btn" id="m-add">${VG.icon('plus')}<span>Adicionar</span></button>
           </div>
           <datalist id="m-sug">${['Cabo UTP', 'Conector RJ45', 'Fonte 12V', 'Conector BNC', 'Balun', 'Bateria 12V 7Ah', 'Sensor infravermelho', 'Cabo coaxial', 'HD 1TB', 'Fio de cerca elétrica', 'Isolador', 'Caixa de passagem'].map((x) => `<option value="${x}">`).join('')}</datalist>
@@ -172,22 +173,26 @@
     const list = VG.$('#m-list', body);
     const drawMats = () => {
       list.innerHTML = a.materiais.length ? a.materiais.map((m) => `
-        <li>${VG.icon('box')}<span>${VG.esc(m.descricao)}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</b>
+        <li>${VG.icon('box')}<span>${VG.esc(m.descricao)}${m.valor != null ? `<small class="mat-val">${VG.esc(VG.fmtMoney(m.valor))} cada</small>` : ''}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}${m.valor != null ? `<small class="mat-val">${VG.esc(VG.fmtMoney(VG.matTotal(m)))}</small>` : ''}</b>
           <button type="button" class="btn btn-ghost btn-icon" data-rm="${m.id}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
         : '<li class="faint" style="justify-content:center">Nenhum material adicionado.</li>';
+      const tot = VG.matsTotal(a.materiais);
+      if (tot != null) list.innerHTML += `<li class="mat-total"><span>Total dos materiais</span><b>${VG.esc(VG.fmtMoney(tot))}</b></li>`;
       VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => { a.materiais = a.materiais.filter((m) => m.id !== b.dataset.rm); persist(); drawMats(); }));
     };
     const addMat = () => {
-      const d = VG.$('#m-desc', body), q = VG.$('#m-qtd', body), u = VG.$('#m-un', body);
+      const d = VG.$('#m-desc', body), q = VG.$('#m-qtd', body), u = VG.$('#m-un', body), vl = VG.$('#m-val', body);
+      const valor = VG.parseMoney(vl.value);
+      if (Number.isNaN(valor)) { vl.focus(); return VG.toast('Valor inválido. Use por exemplo 12,50 — ou deixe em branco.', 'warn'); }
       const desc = d.value.trim(), qtd = Number(String(q.value).replace(',', '.'));
       if (!desc) { d.focus(); return VG.toast('Informe o material.', 'warn'); }
       if (!(qtd > 0)) { q.focus(); return VG.toast('Informe uma quantidade válida.', 'warn'); }
-      a.materiais.push({ id: VG.uid(), descricao: desc, quantidade: qtd, unidade: u.value });
+      a.materiais.push({ id: VG.uid(), descricao: desc, quantidade: qtd, unidade: u.value, valor });
       persist(); drawMats();
-      d.value = ''; q.value = 1; d.focus();
+      d.value = ''; q.value = 1; vl.value = ''; d.focus();
     };
     VG.$('#m-add', body).onclick = addMat;
-    VG.$('#m-desc', body).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } });
+    ['#m-desc', '#m-val'].forEach((sel) => VG.$(sel, body).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } }));
     drawMats();
 
     // Fotos

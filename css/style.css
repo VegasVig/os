@@ -782,3 +782,12 @@ html.is-saving::after {
   #os-toolbar.is-open > .field:not(.field--search):not(.hidden) { display: flex; }
   #os-toolbar.is-open > #f-clear { display: inline-flex; }
 }
+
+/* Materiais com valor (opcional) */
+.mat-add { grid-template-columns: minmax(0, 1fr) 80px 120px 120px auto; }
+.mat-list li > span { display: flex; flex-direction: column; min-width: 0; }
+.mat-list li b { display: flex; flex-direction: column; align-items: flex-end; }
+.mat-val { font-size: .76rem; font-weight: 500; color: var(--text-3); font-family: var(--font-body, inherit); }
+.mat-list li.mat-total { background: transparent; border: 1px dashed var(--line); font-weight: 600; }
+.materials tfoot td { border-bottom: 0; padding-top: .7rem; }
+.mat-list li.mat-total { padding-right: calc(.7rem + 40px); }

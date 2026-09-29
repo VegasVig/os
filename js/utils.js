@@ -127,6 +127,20 @@
   };
   VG.TIPOS_ATENDIMENTO = ['Manutenção', 'Instalação', 'Suporte', 'Preventiva', 'Corretiva', 'Vistoria', 'Outro'];
   VG.EQUIPAMENTOS = ['Câmera', 'DVR/NVR', 'Alarme', 'Central de alarme', 'Controle de acesso', 'Cerca elétrica', 'Interfone', 'Portão eletrônico', 'PABX', 'Rede', 'Outro'];
+  /** Valor em reais: 1234.5 → R$ 1.234,50 */
+  VG.fmtMoney = (v) => (v == null || v === '' || isNaN(v) ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+  /** Lê "12,50", "1.234,56", "R$ 30" ou "12.5" → número; vazio → null */
+  VG.parseMoney = (txt) => {
+    let t = String(txt == null ? '' : txt).replace(/r\$|\s/gi, '');
+    if (!t) return null;
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); // 1.500 = mil e quinhentos
+    const n = Number(t);
+    return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+  };
+  /** Total de um material (qtd × valor unitário) e da lista toda */
+  VG.matTotal = (m) => (m && m.valor != null && m.valor !== '' ? Math.round(Number(m.quantidade || 0) * Number(m.valor) * 100) / 100 : null);
+  VG.matsTotal = (mats) => { const v = (mats || []).map(VG.matTotal).filter((x) => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) * 100) / 100 : null; };
   VG.UNIDADES = ['unidade(s)', 'metro(s)', 'rolo(s)', 'caixa(s)', 'par(es)', 'kit(s)', 'peça(s)'];
 
   VG.badge = (status, lg) => {

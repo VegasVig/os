@@ -155,18 +155,35 @@
     else {
       ensure(8);
       doc.setFillColor(...COR.grafite); doc.rect(M, y - 4.5, CW, 6.5, 'F');
-      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Material', M + 16, y); doc.text('Quantidade', W - M - 3, y, { align: 'right' });
+      const tot = VG.matsTotal(mats);
+      const comValor = tot != null;
+      // colunas (da direita para a esquerda): Total, Valor unit., Quantidade
+      const xTot = W - M - 3, xUni = W - M - 33, xQtd = comValor ? W - M - 65 : W - M - 3;
+      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Material', M + 16, y); doc.text('Quantidade', xQtd, y, { align: 'right' });
+      if (comValor) { doc.text('Valor unit.', xUni, y, { align: 'right' }); doc.text('Total', xTot, y, { align: 'right' }); }
       y += 5;
       mats.forEach((m, i) => {
-        const ln = doc.splitTextToSize(safe(m.descricao), CW - 60);
+        const ln = doc.splitTextToSize(safe(m.descricao), comValor ? CW - 110 : CW - 60);
         const h = ln.length * 4.4 + 2.4;
         ensure(h + 1);
         if (i % 2 === 0) { doc.setFillColor(245, 246, 248); doc.rect(M, y - 3.8, CW, h, 'F'); }
         setText(8.8, 'normal', COR.texto);
         doc.text(String(i + 1).padStart(2, '0'), M + 3, y); doc.text(ln, M + 16, y);
-        doc.text(safe(`${m.quantidade} ${m.unidade || ''}`), W - M - 3, y, { align: 'right' });
+        doc.text(safe(`${m.quantidade} ${m.unidade || ''}`), xQtd, y, { align: 'right' });
+        if (comValor) {
+          doc.text(safe(m.valor != null ? VG.fmtMoney(m.valor) : '-'), xUni, y, { align: 'right' });
+          doc.text(safe(m.valor != null ? VG.fmtMoney(VG.matTotal(m)) : '-'), xTot, y, { align: 'right' });
+        }
         y += h;
       });
+      if (comValor) {
+        ensure(8);
+        doc.setDrawColor(200, 204, 210); doc.line(M, y - 3.2, W - M, y - 3.2);
+        setText(9, 'bold', COR.texto);
+        doc.text('Total dos materiais', xUni, y + 1, { align: 'right' });
+        doc.text(safe(VG.fmtMoney(tot)), xTot, y + 1, { align: 'right' });
+        y += 6;
+      }
       y += 3;
     }
 
@@ -280,7 +297,7 @@
         ${sec('Problema relatado')}<p style="font-size:12px;white-space:pre-wrap">${esc(os.problema)}</p>
         ${sec('Diagnóstico')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.diagnostico || '—')}</p>
         ${sec('Serviço executado')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.servico || '—')}</p>
-        ${sec('Materiais utilizados')}${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse">${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td></tr>`).join('')}</table>` : '<p style="font-size:12px">Nenhum material registrado.</p>'}
+        ${sec('Materiais utilizados')}${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse">${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td>${VG.matsTotal(a.materiais) != null ? `<td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.valor != null ? VG.fmtMoney(m.valor) : '—')}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.valor != null ? VG.fmtMoney(VG.matTotal(m)) : '—')}</td>` : ''}</tr>`).join('')}${VG.matsTotal(a.materiais) != null ? `<tr><td colspan="3" style="padding:6px 4px;text-align:right"><b>Total dos materiais</b></td><td style="padding:6px 4px;text-align:right"><b>${esc(VG.fmtMoney(VG.matsTotal(a.materiais)))}</b></td></tr>` : ''}</table>` : '<p style="font-size:12px">Nenhum material registrado.</p>'}
         ${sec('Observações')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.observacoes || '—')}</p>
         ${fotos.length ? sec('Fotos') + `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map(([l, f]) => `<div><img src="${f}" style="width:170px;height:128px;object-fit:cover;border:1px solid #ccc"><div style="font-size:9px;color:#666">${l}</div></div>`).join('')}</div>` : ''}
         ${sec('Assinaturas')}<table style="width:100%;border-collapse:collapse"><tr>${sig('Técnico responsável', os.assinaturaTecnico)}${sig('Cliente', os.assinaturaCliente)}</tr></table>
