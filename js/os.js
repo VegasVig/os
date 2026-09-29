@@ -11,6 +11,19 @@
   const FINAIS = ['concluida', 'cancelada'];
   let filtros = { q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' };
 
+  /* ---------- Abas da supervisora ---------- */
+  // Instalação tem aba própria; os demais tipos (Manutenção, Preventiva, Corretiva,
+  // Suporte, Vistoria, Outro) ficam em Manutenção.
+  const lerAba = (k, pad) => { try { return localStorage.getItem(k) || pad; } catch (e) { return pad; } };
+  const gravarAba = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  let aba = lerAba('vegas_os_aba', 'manutencao');
+  let sub = lerAba('vegas_os_sub', 'realizar');
+  const grupoTipo = (o) => (VG.norm(o.tipo) === 'instalacao' ? 'instalacao' : 'manutencao');
+  const grupoStatus = (o) => (o.status === 'concluida' ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
+  const PESO = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
+  const COR_PRIO = { urgente: 'red', alta: 'orange', normal: 'blue', baixa: 'gray' };
+  const dot = (p) => { const k = COR_PRIO[p] ? p : 'normal'; return `<span class="os-dot os-dot--${COR_PRIO[k]}${k === 'urgente' ? ' os-dot--pulse' : ''}" title="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}" aria-label="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}"></span>`; };
+
   /* ---------- Busca ---------- */
   function matches(o, q) {
     if (!q) return true;
@@ -22,8 +35,7 @@
     return d.length >= 3 && VG.digits(o.cliente && o.cliente.cpf_cnpj).includes(d);
   }
 
-  function aplicarFiltros(list) {
-    const f = filtros;
+  function aplicarFiltros(list, f = filtros) {
     const de = f.de ? new Date(f.de + 'T00:00:00') : null;
     const ate = f.ate ? new Date(f.ate + 'T23:59:59') : null;
     return list.filter((o) =>
@@ -40,6 +52,8 @@
   function renderList(el, params = {}) {
     // filtros vindos da URL (#/os?status=...)
     if (Object.keys(params).length) filtros = Object.assign({ q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' }, params);
+    if (params.status) { sub = params.status === 'concluida' ? 'realizadas' : params.status === 'cancelada' ? 'canceladas' : 'realizar'; if (sub !== 'realizar') filtros.status = ''; }
+    if (params.tipo) { aba = VG.norm(params.tipo) === 'instalacao' ? 'instalacao' : 'manutencao'; filtros.tipo = VG.norm(params.tipo) === 'instalacao' || VG.norm(params.tipo) === 'manutencao' ? '' : params.tipo; }
     const tecnicos = S().list('tecnicos');
     const clientes = S().list('clientes').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     const f = filtros;
@@ -48,18 +62,21 @@
         <div class="page-head">
           <div><h1>Ordens de serviço</h1><p>Acompanhe cada atendimento do início até a assinatura do cliente.</p></div>
           <div class="page-head__actions">
+            <button class="btn" id="os-import">${VG.icon('upload')}<span>Importar OS CSV</span></button>
             <a class="btn btn-primary" href="#/os/nova">${VG.icon('plus')}<span>Nova ordem de serviço</span></a>
           </div>
         </div>
         <section class="panel">
-          <div class="toolbar">
+          <div class="os-tabs" id="os-tabs"></div>
+          <div class="toolbar" id="os-toolbar">
             <div class="field field--search"><label for="f-q">Pesquisar OS</label>
               <div class="input-group">${VG.icon('search')}<input id="f-q" class="input" placeholder="Nº, cliente, CPF/CNPJ, técnico, equipamento…" value="${VG.esc(f.q)}"></div></div>
-            <div class="field"><label for="f-status">Status</label><select id="f-status" class="select" data-f="status">${VG.statusOptions(f.status)}</select></div>
+            <button type="button" class="btn btn-sm os-filtros-btn" id="f-toggle">${VG.icon('search')}<span>Filtros</span></button>
+            <div class="field" id="f-status-box"><label for="f-status">Status</label><select id="f-status" class="select" data-f="status">${VG.options(Object.entries(VG.STATUS).filter(([k]) => !FINAIS.includes(k)).map(([k, x]) => ({ value: k, label: x.label })), f.status, 'Todos')}</select></div>
             <div class="field"><label for="f-tec">Técnico</label><select id="f-tec" class="select" data-f="tecnico">${VG.options([{ value: '_sem', label: 'Sem técnico' }, ...tecnicos.map((t) => ({ value: t.id, label: t.nome }))], f.tecnico, 'Todos')}</select></div>
             <div class="field"><label for="f-cli">Cliente</label><select id="f-cli" class="select" data-f="cliente">${VG.options(clientes.map((c) => ({ value: c.id, label: c.nome })), f.cliente, 'Todos')}</select></div>
             <div class="field"><label for="f-pr">Prioridade</label><select id="f-pr" class="select" data-f="prioridade">${VG.options(Object.entries(VG.PRIORIDADES).map(([k, p]) => ({ value: k, label: p.label })), f.prioridade, 'Todas')}</select></div>
-            <div class="field"><label for="f-tipo">Tipo</label><select id="f-tipo" class="select" data-f="tipo">${VG.options(VG.TIPOS_ATENDIMENTO, f.tipo, 'Todos')}</select></div>
+            <div class="field" id="f-tipo-box"><label for="f-tipo">Tipo</label><select id="f-tipo" class="select" data-f="tipo">${VG.options(VG.TIPOS_ATENDIMENTO.filter((t) => t !== 'Instalação'), f.tipo, 'Todos')}</select></div>
             <div class="field"><label for="f-de">De</label><input id="f-de" type="date" class="input" data-f="de" value="${f.de}"></div>
             <div class="field"><label for="f-ate">Até</label><input id="f-ate" type="date" class="input" data-f="ate" value="${f.ate}"></div>
             <button class="btn btn-ghost btn-sm" id="f-clear" style="margin-bottom:3px">${VG.icon('x')}<span>Limpar</span></button>
@@ -69,6 +86,8 @@
       </div>`;
     VG.$('#f-q', el).addEventListener('input', VG.debounce((e) => { filtros.q = e.target.value; table(el); }, 200));
     VG.$$('[data-f]', el).forEach((s) => (s.onchange = () => { filtros[s.dataset.f] = s.value; table(el); }));
+    VG.$('#f-toggle', el).onclick = () => VG.$('#os-toolbar', el).classList.toggle('is-open');
+    VG.$('#os-import', el).onclick = () => VG.OSCSV.importar(() => table(el));
     VG.$('#f-clear', el).onclick = () => { filtros = { q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' }; if (location.hash !== '#/os') location.hash = '#/os'; else renderList(el); };
     table(el);
   }
@@ -76,40 +95,91 @@
   function table(el) {
     const box = VG.$('#os-table', el);
     const all = S().list('ordens');
-    const list = aplicarFiltros(all).sort((a, b) => b.numero - a.numero);
+    // status só vale em "A realizar"; tipo só vale dentro de Manutenção
+    const filtradas = aplicarFiltros(all, Object.assign({}, filtros, { status: '', tipo: '' }))
+      .filter((o) => grupoStatus(o) !== 'realizar' || !filtros.status || o.status === filtros.status)
+      .filter((o) => grupoTipo(o) !== 'manutencao' || !filtros.tipo || o.tipo === filtros.tipo);
+    const doTipo = filtradas.filter((o) => grupoTipo(o) === aba);
+    const conta = (g, st) => filtradas.filter((o) => grupoTipo(o) === g && (!st || grupoStatus(o) === st)).length;
+    const contaSub = (st) => doTipo.filter((o) => grupoStatus(o) === st).length;
+    const nCanc = contaSub('canceladas');
+    if (sub === 'canceladas' && !nCanc) sub = 'realizar';
+
+    // Abas: tipo (Manutenção / Instalação) e situação (A realizar / Realizadas)
+    const tabs = VG.$('#os-tabs', el);
+    tabs.innerHTML = `
+      <div class="os-tabs__main" role="tablist">
+        ${[['manutencao', 'Manutenção', 'wrench'], ['instalacao', 'Instalação', 'plus']].map(([k, l, ic]) => `
+          <button role="tab" class="os-tab ${aba === k ? 'is-on' : ''}" data-aba="${k}" aria-selected="${aba === k}">${VG.icon(ic)}<span>${l}</span><em>${conta(k, 'realizar')}</em></button>`).join('')}
+      </div>
+      <div class="os-tabs__sub" role="tablist">
+        <button role="tab" class="os-sub ${sub === 'realizar' ? 'is-on' : ''}" data-sub="realizar">A realizar <em>${contaSub('realizar')}</em></button>
+        <button role="tab" class="os-sub ${sub === 'realizadas' ? 'is-on' : ''}" data-sub="realizadas">Realizadas <em>${contaSub('realizadas')}</em></button>
+        ${nCanc ? `<button role="tab" class="os-sub os-sub--faint ${sub === 'canceladas' ? 'is-on' : ''}" data-sub="canceladas">Canceladas <em>${nCanc}</em></button>` : ''}
+        <span class="os-legend">${['urgente', 'alta', 'normal', 'baixa'].map((p) => `<span>${dot(p)}${VG.PRIORIDADES[p].label}</span>`).join('')}</span>
+      </div>`;
+    tabs.querySelectorAll('[data-aba]').forEach((b) => (b.onclick = () => { aba = b.dataset.aba; gravarAba('vegas_os_aba', aba); table(el); }));
+    tabs.querySelectorAll('[data-sub]').forEach((b) => (b.onclick = () => { sub = b.dataset.sub; gravarAba('vegas_os_sub', sub); table(el); }));
+    const stBox = VG.$('#f-status-box', el); if (stBox) stBox.classList.toggle('hidden', sub !== 'realizar');
+    const tpBox = VG.$('#f-tipo-box', el); if (tpBox) tpBox.classList.toggle('hidden', aba === 'instalacao');
+
+    const hoje = VG.toInputDate();
+    const fimDe = (o) => (o.atendimento && o.atendimento.fim) || o.atualizadoEm || o.criadaEm;
+    const list = doTipo.filter((o) => grupoStatus(o) === sub);
+    if (sub === 'realizar') {
+      list.sort((a, b) => (PESO[a.prioridade] ?? 2) - (PESO[b.prioridade] ?? 2)
+        || String(a.prazoData || '9999').localeCompare(String(b.prazoData || '9999'))
+        || String(a.prazoHora || '99').localeCompare(String(b.prazoHora || '99'))
+        || a.numero - b.numero);
+    } else list.sort((a, b) => String(fimDe(b)).localeCompare(String(fimDe(a))) || b.numero - a.numero);
+
     if (!list.length) {
-      box.innerHTML = all.length
-        ? VG.empty('search', 'Nenhuma OS encontrada', 'Nenhuma ordem corresponde aos filtros. Ajuste a pesquisa ou limpe os filtros.')
-        : VG.empty('os', 'Nenhuma OS criada', 'Crie a primeira ordem de serviço para começar.', `<a class="btn btn-primary" href="#/os/nova">${VG.icon('plus')}<span>Nova ordem de serviço</span></a>`);
+      const nomeAba = aba === 'instalacao' ? 'instalação' : 'manutenção';
+      box.innerHTML = !all.length
+        ? VG.empty('os', 'Nenhuma OS criada', 'Crie a primeira ordem de serviço para começar.', `<a class="btn btn-primary" href="#/os/nova">${VG.icon('plus')}<span>Nova ordem de serviço</span></a>`)
+        : filtradas.length !== all.length && doTipo.length === 0
+          ? VG.empty('search', 'Nenhuma OS encontrada', 'Nenhuma ordem corresponde aos filtros. Ajuste a pesquisa ou limpe os filtros.')
+          : VG.empty(sub === 'realizar' ? 'check' : 'os', sub === 'realizar' ? `Nenhuma ${nomeAba} a realizar` : sub === 'realizadas' ? `Nenhuma ${nomeAba} realizada` : 'Nenhuma OS cancelada',
+              sub === 'realizar' ? 'Tudo em dia por aqui.' : 'Quando uma OS for concluída, ela aparece aqui.');
       return;
     }
+
+    const quando = (o) => {
+      if (sub !== 'realizar') { const d = VG.fmtDate(fimDe(o)); return `<span class="faint"><span class="d-long">${VG.esc(d)}</span><span class="d-short">${VG.esc(String(d).slice(0, 5))}</span></span>`; }
+      if (!o.prazoData) return '<span class="faint">sem data</span>';
+      const txt = VG.fmtDate(o.prazoData + 'T12:00:00') + (o.prazoHora ? ' ' + o.prazoHora : '');
+      if (o.prazoData < hoje) return `<span class="os-late" title="Previsto para ${VG.esc(txt)}">Atrasada</span>`;
+      if (o.prazoData === hoje) return `<span class="os-today">Hoje${o.prazoHora ? ' ' + VG.esc(o.prazoHora) : ''}</span>`;
+      const [, mm, dd] = o.prazoData.split('-');
+      return `<span class="d-long">${VG.esc(txt)}</span><span class="d-short">${dd}/${mm}</span>`;
+    };
+    const detalhe = (o) => [aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
+
     box.innerHTML = `
-      <div class="table-wrap"><table class="table table--cards">
-        <thead><tr><th>Nº OS</th><th>Cliente</th><th>Técnico</th><th>Tipo</th><th>Prioridade</th><th>Data</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead>
-        <tbody>${list.map((o) => `
-          <tr data-id="${o.id}" class="clickable">
-            <td data-label="Nº OS" class="num">#${o.numero}</td>
-            <td data-label="Cliente"><span class="strong">${VG.esc(o.cliente && o.cliente.nome)}</span><span class="sub">${VG.esc((o.equipamento && o.equipamento.tipo) || '')}</span></td>
-            <td data-label="Técnico">${VG.esc(o.tecnicoNome || '—')}</td>
-            <td data-label="Tipo">${VG.esc(o.tipo)}</td>
-            <td data-label="Prioridade">${VG.prioBadge(o.prioridade)}</td>
-            <td data-label="Data">${VG.fmtDate(o.criadaEm)}</td>
-            <td data-label="Status">${VG.badge(o.status)}</td>
-            <td data-label="" class="row-actions-cell"><div class="row-actions">
-              <button class="btn btn-ghost btn-icon" data-act="view" title="Visualizar" aria-label="Visualizar">${VG.icon('eye')}</button>
+      <div class="os-lines" role="list">
+        ${list.map((o) => `
+          <div class="os-line" role="listitem" data-id="${o.id}" tabindex="0">
+            ${dot(o.prioridade)}
+            <span class="os-line__cli"><b>${VG.esc((o.cliente && o.cliente.nome) || '—')}</b>${detalhe(o) ? `<small>${VG.esc(detalhe(o))}</small>` : ''}</span>
+            <span class="os-line__num">#${o.numero}</span>
+            <span class="os-line__tec">${o.tecnicoNome ? VG.esc(o.tecnicoNome.split(' ').slice(0, 2).join(' ')) : '<span class="faint">sem técnico</span>'}</span>
+            <span class="os-line__date">${quando(o)}</span>
+            <span class="os-line__st">${VG.badge(o.status)}</span>
+            <span class="os-line__act">
               <button class="btn btn-ghost btn-icon" data-act="edit" title="Editar" aria-label="Editar" ${FINAIS.includes(o.status) ? 'disabled' : ''}>${VG.icon('edit')}</button>
               <button class="btn btn-ghost btn-icon" data-act="pdf" title="Gerar PDF" aria-label="Gerar PDF">${VG.icon('pdf')}</button>
               <button class="btn btn-ghost btn-icon" data-act="link" title="Copiar link" aria-label="Copiar link" ${o.status === 'cancelada' ? 'disabled' : ''}>${VG.icon('link')}</button>
               <button class="btn btn-ghost btn-icon" data-act="cancel" title="Cancelar OS" aria-label="Cancelar OS" ${FINAIS.includes(o.status) ? 'disabled' : ''}>${VG.icon('ban')}</button>
-            </div></td>
-          </tr>`).join('')}</tbody>
-      </table></div>
-      <div class="table-foot"><span>${list.length} de ${all.length} ordens</span></div>`;
-    box.querySelectorAll('tr[data-id]').forEach((tr) => {
-      const id = tr.dataset.id;
-      tr.addEventListener('click', (e) => { if (!e.target.closest('button')) location.hash = '#/os/ver/' + id; });
-      const on = (a, fn) => (tr.querySelector(`[data-act=${a}]`).onclick = (e) => { e.stopPropagation(); fn(); });
-      on('view', () => (location.hash = '#/os/ver/' + id));
+            </span>
+          </div>`).join('')}
+      </div>
+      <div class="table-foot"><span>${list.length} ${list.length === 1 ? 'ordem' : 'ordens'} nesta aba · ${all.length} no total</span></div>`;
+    box.querySelectorAll('.os-line[data-id]').forEach((row) => {
+      const id = row.dataset.id;
+      const abrir = () => (location.hash = '#/os/ver/' + id);
+      row.addEventListener('click', (e) => { if (!e.target.closest('button')) abrir(); });
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) abrir(); });
+      const on = (a, fn) => (row.querySelector(`[data-act=${a}]`).onclick = (e) => { e.stopPropagation(); fn(); });
       on('edit', () => (location.hash = '#/os/editar/' + id));
       on('pdf', () => VG.PDF.gerar(S().get('ordens', id)));
       on('link', () => linkModal(S().get('ordens', id)));
@@ -117,7 +187,6 @@
     });
   }
 
-  /* ---------- FORMULÁRIO ---------- */
   function renderForm(el, id, params = {}) {
     const editing = !!id;
     const os = editing ? S().get('ordens', id) : null;

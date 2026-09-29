@@ -337,6 +337,38 @@ const ACOES = {
     });
   },
 
+  /** Cadastro em lote de ordens de serviço (lista CSV). Números gerados em sequência. */
+  importOS(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    const itens = Array.isArray(req.items) ? req.items.slice(0, 500) : [];
+    if (!itens.length) throw new Error('Nenhuma OS para importar.');
+    return comLock_(() => {
+      const cfg = config_();
+      let maior = ler_('ordens').reduce((m, o) => Math.max(m, Number(o.numero) || 0), Number(cfg.ultimoNumeroOS) || 1000);
+      const criadas = itens.map((os, i) => {
+        if (!os || !os.clienteId) throw new Error('Linha ' + (i + 1) + ': OS sem cliente. Nada foi importado.');
+        os.id = tok_(16).toLowerCase();
+        os.numero = ++maior;
+        os.tokenTecnico = tok_(12);
+        os.tokenCliente = tok_(12);
+        os.criadaEm = os.criadaEm || agora_();
+        os.criadaPor = s.nome;
+        os.criadaPorId = s.userId;
+        os.atualizadoEm = agora_();
+        return os;
+      });
+      const sh = aba_('ordens');
+      const linhas = criadas.map((o) => linha_('ordens', o));
+      sh.getRange(sh.getLastRow() + 1, 1, linhas.length, linhas[0].length).setValues(linhas);
+      delete MEMO_['ordens'];
+      cfg.ultimoNumeroOS = maior;
+      salvarConfig_(cfg);
+      registrarAtividade_(criadas.length + ' ordens de serviço importadas via CSV', null, 'os');
+      bump_();
+      return criadas;
+    });
+  },
+
   log(req) {
     sessao_(req);
     const e = req.entry || {};

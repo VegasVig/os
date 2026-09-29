@@ -70,6 +70,7 @@ O link do cliente continua disponível, mas só é necessário quando o cliente 
 ## Listas CSV
 - **Técnicos:** só a coluna `nome` é obrigatória. As colunas `usuario` e `senha` são opcionais, porque o técnico entra pelo nome.
 - **Clientes:** as colunas são `codigo, nome, cpf_cnpj, telefone, email, endereco, numero, complemento, bairro, cidade, estado, cep`. O mesmo CPF/CNPJ é aceito em endereços diferentes (unidades), e o CPF/CNPJ pode ficar em branco para completar depois.
+- **Ordens de serviço:** tela **Ordens de serviço** → **Importar OS CSV**. As colunas são `codigo_cliente, cpf_cnpj, cliente, tipo, prioridade, problema, equipamento, marca, modelo, serie, patrimonio, local, tecnico, data_prevista, hora_prevista`. Obrigatórios: o cliente, por uma das três primeiras colunas, e o `problema`. O cliente precisa estar cadastrado antes. O `tecnico` pode ser o nome ou o usuário. As datas podem vir como `30/09/2026`. Cada linha vira uma OS nova, com número automático, até 500 por arquivo.
 
 ## Problemas comuns
 - **"Falta configurar o servidor":** o `js/config.js` está sem o endereço `/exec`.

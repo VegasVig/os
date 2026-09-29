@@ -223,6 +223,26 @@
       r.users.forEach((u) => this.put('users', u));
       return r;
     },
+    /**
+     * Cria várias OS de uma vez. Se o Apps Script ainda não tiver a ação
+     * "importOS" (implantação antiga), cria uma por uma com createOS.
+     */
+    async importOS(items, progresso) {
+      try {
+        const criadas = await call('importOS', { items });
+        criadas.forEach((o) => this.put('ordens', o));
+        if (criadas.length) mem.config.ultimoNumeroOS = criadas[criadas.length - 1].numero;
+        return criadas;
+      } catch (e) {
+        if (!/a[çc][ãa]o desconhecida/i.test(e.message)) throw e;
+        const criadas = [];
+        for (let i = 0; i < items.length; i++) {
+          progresso && progresso(i + 1, items.length);
+          criadas.push(await this.createOS(items[i]));
+        }
+        return criadas;
+      }
+    },
     async createOS(os) {
       const salva = await call('createOS', { os });
       this.put('ordens', salva);
