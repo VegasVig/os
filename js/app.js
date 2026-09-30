@@ -133,43 +133,42 @@
   }
 
   /* ---------- LOGIN ---------- */
+  // Arte de fundo: assets/login-fundo.jpg (se não existir, fica o fundo escuro padrão)
+  // Escudo: assets/login-escudo.png
+  const LOGIN_TAGS = [
+    ['camera', 'Câmeras', 'CFTV'],
+    ['shield', 'Alarmes', 'Monitoramento'],
+    ['lock', 'Controle de acesso', 'Portaria eletrônica'],
+    ['settings', 'Automação', 'e sistemas'],
+  ];
+  function loginFrame(miolo) {
+    return `
+      <main class="lx">
+        <div class="lx__bg" aria-hidden="true"></div>
+        <div class="lx__wrap">
+          <div class="lx__logo"><img src="assets/login-escudo.png" alt="Vegas Vigilância e Segurança" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'lx__logo-alt',innerHTML:VG.logoImg('logo--fixed-dark')}))"></div>
+          ${miolo}
+        </div>
+        <footer class="lx__foot">
+          <p class="lx__slogan">Mais que segurança,<br>é tranquilidade.</p>
+          <ul class="lx__tags">${LOGIN_TAGS.map(([ic, t, st]) => `<li>${VG.icon(ic)}<span><b>${t}</b><small>${st}</small></span></li>`).join('')}</ul>
+          <p class="lx__lema">Tecnologia + Pessoas = Segurança</p>
+        </footer>
+      </main>`;
+  }
+
   function renderLogin(modo) {
     document.title = 'Entrar · Vegas OS';
-    const empresa = VG.esc(S().getConfig().empresa.nome);
-    const topo = `<div class="login__logo">${VG.logoImg('logo--fixed-dark')}</div><p class="login__title">Controle de Ordens de Serviço</p>`;
-    const rodape = `<div class="login__foot">${VG.icon('shield')}<span>Acesso restrito · ${empresa}</span></div>`;
 
-    /* ----- 1) Escolha do perfil ----- */
-    if (modo !== 'supervisora' && modo !== 'tecnico') {
-      const ult = S().read('last_tecnico', null);
-      app().innerHTML = `
-        <main class="login"><div class="login__card">
-          ${topo}
-          ${ult ? `<button type="button" class="login-cont" id="lg-cont">
-              <span class="avatar">${VG.esc(VG.initials(ult.nome))}</span>
-              <span><small>Continuar como</small><b>${VG.esc(ult.nome)}</b></span>${VG.icon('chevron')}</button>` : ''}
-          <p class="login__ask">Como você vai entrar?</p>
-          <div class="login-roles">
-            <a class="login-role" href="#/login/tecnico">${VG.icon('wrench')}<b>Técnico</b><span>Ver minhas OS</span></a>
-            <a class="login-role" href="#/login/supervisora">${VG.icon('shield')}<b>Supervisora</b><span>Usuário e senha</span></a>
-          </div>
-          ${rodape}
-        </div></main>`;
-      const c = VG.$('#lg-cont');
-      if (c) c.onclick = () => entrarTecnico(ult, c);
-      return;
-    }
-
-    /* ----- 2) Técnico: escolhe o próprio nome ----- */
+    /* ----- Técnico: escolhe o próprio nome ----- */
     if (modo === 'tecnico') {
-      app().innerHTML = `
-        <main class="login"><div class="login__card login__card--wide">
-          ${topo}
-          <div class="login__back"><a class="btn btn-ghost btn-sm" href="#/login">${VG.icon('back')}<span>Voltar</span></a><b>Quem é você?</b></div>
-          <div class="input-group" style="margin-bottom:.8rem">${VG.icon('search')}<input class="input" id="lg-busca" placeholder="Procurar meu nome" autocomplete="off"></div>
+      app().innerHTML = loginFrame(`
+        <section class="lx-card lx-card--solo">
+          <div class="lx-card__head">${VG.icon('wrench')}<h2>Quem é você?</h2><span>Toque no seu nome para entrar</span></div>
+          <div class="input-group lx-input" style="margin-bottom:.8rem">${VG.icon('search')}<input class="input" id="lg-busca" placeholder="Procurar meu nome" autocomplete="off"></div>
           <div class="tec-grid" id="lg-tecs"><div style="grid-column:1/-1;display:grid;place-items:center;padding:1.5rem"><span class="spinner"></span></div></div>
-          ${rodape}
-        </div></main>`;
+          <a class="lx-back" href="#/login">${VG.icon('back')}<span>Voltar</span></a>
+        </section>`);
       const box = VG.$('#lg-tecs');
       let lista = [];
       const desenhar = () => {
@@ -189,27 +188,44 @@
       return;
     }
 
-    /* ----- 3) Supervisora: usuário e senha ----- */
-    app().innerHTML = `
-      <main class="login">
-        <div class="login__card">
-          ${topo}
-          <div class="login__back"><a class="btn btn-ghost btn-sm" href="#/login">${VG.icon('back')}<span>Voltar</span></a><b>Supervisora</b></div>
-          <form id="login-form" novalidate autocomplete="on">
-            <div class="field"><label for="lg-user">Usuário</label>
-              <div class="input-group">${VG.icon('user')}<input id="lg-user" class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div></div>
-            <div class="field"><label for="lg-pass">Senha</label>
-              <div class="input-group">${VG.icon('lock')}<input id="lg-pass" class="input" type="password" name="password" autocomplete="current-password" required style="padding-right:2.9rem">
-                <button type="button" class="btn btn-ghost btn-icon pw-toggle" id="lg-eye" aria-label="Mostrar senha" title="Mostrar senha">${VG.icon('eye')}</button></div></div>
+    /* ----- Tela principal: Área técnica + Supervisão ----- */
+    const ult = S().read('last_tecnico', null);
+    app().innerHTML = loginFrame(`
+      <div class="lx-cards">
+        <section class="lx-card">
+          <div class="lx-card__head">
+            <svg class="lx-card__ico" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M29.5 8.5a8 8 0 0 0-9.8 10.3L7.5 31a3.5 3.5 0 0 0 5 5l12.2-12.2A8 8 0 0 0 35 14l-4.6 4.6-4.2-.8-.8-4.2z"/><path d="M26 30l9.5 9.5a3 3 0 0 0 4.2-4.2L30.2 25.8M38 6l4 4-5 6-3-1-8 8M18 18l-7-7 2-5-4-2-3 3 2 4 5-1"/></svg>
+            <h2>Área técnica</h2><span>Acesso sem senha</span>
+          </div>
+          <p class="lx-card__txt">Acesso direto ao sistema<br>para uso técnico e operacional.</p>
+          <div class="lx-card__foot">
+            ${ult ? `<button type="button" class="lx-cont" id="lg-cont"><span class="avatar">${VG.esc(VG.initials(ult.nome))}</span><span><small>Continuar como</small><b>${VG.esc(ult.nome)}</b></span>${VG.icon('chevron')}</button>` : ''}
+            <a class="lx-btn" href="#/login/tecnico">${VG.icon('chevron')}<span>Entrar como técnico</span></a>
+          </div>
+        </section>
+
+        <section class="lx-card">
+          <div class="lx-card__head">
+            <span class="lx-card__ico lx-card__ico--sup">${VG.icon('user')}${VG.icon('lock')}</span>
+            <h2>Supervisão</h2><span>Usuário e senha</span>
+          </div>
+          <p class="lx-card__txt">Acesso restrito para supervisores.<br>Informe seu usuário e senha.</p>
+          <form id="login-form" class="lx-card__foot" novalidate autocomplete="on">
+            <div class="input-group lx-input">${VG.icon('user')}<label for="lg-user" class="sr-only">Usuário</label><input id="lg-user" class="input" name="username" placeholder="Usuário" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+            <div class="input-group lx-input">${VG.icon('lock')}<label for="lg-pass" class="sr-only">Senha</label><input id="lg-pass" class="input" type="password" name="password" placeholder="Senha" autocomplete="current-password" required style="padding-right:2.9rem">
+              <button type="button" class="btn btn-ghost btn-icon pw-toggle" id="lg-eye" aria-label="Mostrar senha" title="Mostrar senha">${VG.icon('eye')}</button></div>
             <div class="login__error" id="lg-err" role="alert"></div>
-            <button type="submit" class="btn btn-primary btn-lg" id="lg-btn">${VG.icon('lock')}<span>Entrar</span></button>
+            <button type="submit" class="lx-btn" id="lg-btn">${VG.icon('lock')}<span>Entrar</span></button>
           </form>
-          ${rodape}
-        </div>
-      </main>`;
+        </section>
+      </div>`);
+    const c = VG.$('#lg-cont');
+    if (c) c.onclick = () => entrarTecnico(ult, c);
+
     const user = VG.$('#lg-user'), pass = VG.$('#lg-pass'), err = VG.$('#lg-err'), eye = VG.$('#lg-eye');
     const last = S().read('last_user', '');
-    if (last) { user.value = last; pass.focus(); } else user.focus();
+    if (last) user.value = last;
+    if (modo === 'supervisora') (last ? pass : user).focus();
     eye.onclick = () => {
       const show = pass.type === 'password';
       pass.type = show ? 'text' : 'password';
@@ -230,7 +246,7 @@
           VG.setBusy(btn, false);
           err.textContent = r.erro;
           pass.value = ''; pass.focus();
-          VG.$('.login__card').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
+          btn.closest('.lx-card').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
           return;
         }
         if (r.session.papel === 'tecnico') S().write('last_tecnico', { id: r.session.tecnicoId, nome: r.session.nome });

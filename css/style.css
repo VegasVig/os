@@ -791,3 +791,116 @@ html.is-saving::after {
 .mat-list li.mat-total { background: transparent; border: 1px dashed var(--line); font-weight: 600; }
 .materials tfoot td { border-bottom: 0; padding-top: .7rem; }
 .mat-list li.mat-total { padding-right: calc(.7rem + 40px); }
+
+/* =========================================================
+   LOGIN — Área técnica + Supervisão (arte Vegas)
+   Fundo: assets/login-fundo.jpg · Escudo: assets/login-escudo.png
+   ========================================================= */
+.lx {
+  --lx-blue: #2f7dff; --lx-line: rgba(200, 212, 230, .28);
+  min-height: 100vh; min-height: 100dvh; position: relative; overflow: hidden; color: #eef1f5;
+  display: flex; flex-direction: column; background: #03050a;
+  padding: max(1.2rem, env(safe-area-inset-top)) 1.25rem max(1rem, env(safe-area-inset-bottom));
+}
+.lx__bg {
+  position: absolute; inset: 0; z-index: 0;
+  background:
+    radial-gradient(60% 55% at 50% 48%, rgba(3,5,10,.92) 0%, rgba(3,5,10,.78) 45%, rgba(3,5,10,.25) 80%, rgba(3,5,10,.05) 100%),
+    linear-gradient(180deg, rgba(3,5,10,.35) 0%, rgba(3,5,10,0) 30%, rgba(3,5,10,.55) 85%, #03050a 100%),
+    url("../assets/login-fundo.jpg") center / cover no-repeat,
+    radial-gradient(900px 520px at 50% 30%, rgba(47,125,255,.14), transparent 65%),
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    #03050a;
+}
+.lx__wrap { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; width: 100%; max-width: 760px; margin: 0 auto; }
+.lx__logo { animation: rise .6s var(--ease) both; }
+.lx__logo img { display: block; width: clamp(150px, 21vw, 250px); height: auto; filter: drop-shadow(0 14px 34px rgba(0,0,0,.8)) drop-shadow(0 0 24px rgba(47,125,255,.25)); }
+.lx__logo-alt { width: 280px; }
+
+.lx-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; width: 100%; animation: rise .7s var(--ease) .08s both; }
+.lx-card {
+  position: relative; display: flex; flex-direction: column; text-align: center; padding: 1.6rem 1.5rem 1.5rem; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(18,22,30,.88), rgba(6,8,13,.92));
+  border: 1px solid var(--lx-line);
+  box-shadow: 0 30px 60px -25px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px rgba(0,0,0,.6), 0 0 28px -6px rgba(47,125,255,.35);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.lx-card::after { /* brilho azul na base, como na arte */
+  content: ""; position: absolute; left: 12%; right: 12%; bottom: -1px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--lx-blue), transparent); box-shadow: 0 0 14px var(--lx-blue);
+}
+.lx-card--solo { width: 100%; max-width: 640px; text-align: left; animation: rise .6s var(--ease) both; }
+.lx-card--solo .lx-card__head { text-align: center; }
+.lx-card__head { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding-bottom: .95rem; margin-bottom: .95rem; position: relative; }
+.lx-card__head::after { content: ""; position: absolute; bottom: 0; left: 8%; right: 8%; height: 1px; background: linear-gradient(90deg, transparent, rgba(214,222,235,.55), transparent); }
+.lx-card__head > .icon, .lx-card__ico { width: 44px; height: 44px; color: #e6eaf0; margin-bottom: .35rem; filter: drop-shadow(0 2px 6px rgba(0,0,0,.7)); }
+.lx-card__ico--sup { position: relative; display: inline-block; }
+.lx-card__ico--sup .icon:first-child { width: 40px; height: 40px; }
+.lx-card__ico--sup .icon:last-child { position: absolute; right: -8px; bottom: -2px; width: 22px; height: 22px; background: #0b0e14; border-radius: 6px; padding: 2px; }
+.lx-card h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(1.35rem, 2.4vw, 1.7rem); letter-spacing: .03em; text-transform: uppercase; color: #f4f6f9; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
+.lx-card__head > span { font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; color: #aeb6c2; }
+.lx-card__txt { margin: 0 0 1.1rem; font-size: .9rem; line-height: 1.5; color: #c8ced7; }
+.lx-card__foot { margin-top: auto; display: grid; gap: .6rem; }
+
+.lx-input .input { height: 44px; background: rgba(0,0,0,.5); border: 1px solid rgba(200,212,230,.3); color: #eef1f5; border-radius: 8px; }
+.lx-input .input::placeholder { color: #9aa3af; }
+.lx-input .input:focus { border-color: #9cc0ff; box-shadow: 0 0 0 3px rgba(47,125,255,.25); }
+.lx-input > .icon { color: #c9d0da; }
+.lx .login__error { min-height: 1.1rem; margin: -.1rem 0; }
+
+.lx-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; min-height: 52px; padding: .8rem 1rem;
+  border: 1px solid rgba(255,255,255,.55); border-radius: 8px; cursor: pointer; text-decoration: none;
+  font: 700 .98rem/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: #0a0d12;
+  background: linear-gradient(180deg, #f7f9fb 0%, #c9ced6 42%, #9aa1ab 52%, #d9dde3 100%);
+  box-shadow: 0 8px 20px -8px rgba(0,0,0,.9), inset 0 1px 0 #fff, 0 0 18px -4px rgba(47,125,255,.45);
+  transition: transform .15s, filter .2s;
+}
+.lx-btn .icon { width: 20px; height: 20px; }
+.lx-btn:hover { filter: brightness(1.07); }
+.lx-btn:active { transform: translateY(1px); }
+.lx-btn[disabled] { opacity: .7; cursor: default; }
+
+.lx-cont {
+  display: flex; align-items: center; gap: .7rem; padding: .55rem .8rem; cursor: pointer; text-align: left; font: inherit; color: #eef1f5;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(200,212,230,.25); border-radius: 8px;
+}
+.lx-cont > span:nth-child(2) { flex: 1; display: grid; min-width: 0; }
+.lx-cont small { font-size: .72rem; color: #9aa3af; }
+.lx-cont b { font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lx-cont > .icon { width: 16px; height: 16px; color: #9aa3af; }
+.lx-back { display: inline-flex; align-items: center; gap: .4rem; margin-top: .9rem; color: #c9d0da; font-size: .9rem; text-decoration: none; }
+.lx .tec-grid { max-height: min(46vh, 420px); }
+
+.lx__foot { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.5rem; padding-top: 1.2rem; }
+.lx__slogan { margin: 0; font: italic 500 1.05rem/1.25 "Brush Script MT", "Segoe Script", cursive; color: #e7ebf0; transform: rotate(-6deg); justify-self: start; }
+.lx__tags { list-style: none; margin: 0; padding: 0; display: flex; }
+.lx__tags li { display: flex; align-items: center; gap: .55rem; padding: 0 1.1rem; }
+.lx__tags li + li { border-left: 1px solid rgba(200,212,230,.2); }
+.lx__tags .icon { width: 24px; height: 24px; color: #c9d0da; }
+.lx__tags span { display: grid; line-height: 1.2; }
+.lx__tags b { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.lx__tags small { font-size: .64rem; color: #8e97a4; text-transform: uppercase; }
+.lx__lema { margin: 0; justify-self: end; font-size: .74rem; letter-spacing: .22em; text-transform: uppercase; color: #c9d0da; display: flex; align-items: center; gap: .7rem; }
+.lx__lema::before, .lx__lema::after { content: ""; width: 26px; height: 1px; background: rgba(200,212,230,.5); }
+
+@media (max-width: 1100px) {
+  .lx__foot { grid-template-columns: 1fr 1fr; }
+  .lx__tags { display: none; }
+}
+@media (max-width: 720px) {
+  .lx { padding-left: 1rem; padding-right: 1rem; }
+  .lx__wrap { justify-content: flex-start; gap: .9rem; padding-top: .4rem; }
+  .lx__logo img { width: 128px; }
+  .lx-cards { grid-template-columns: 1fr; gap: .9rem; }
+  .lx-card { padding: 1.2rem 1.1rem 1.15rem; }
+  .lx-card__head { flex-direction: column; padding-bottom: .7rem; margin-bottom: .7rem; }
+  .lx-card__head > .icon, .lx-card__ico { width: 34px; height: 34px; }
+  .lx-card__txt { margin-bottom: .8rem; font-size: .84rem; }
+  .lx__bg { background-position: center; }
+  .lx__foot { grid-template-columns: 1fr; justify-items: center; gap: .5rem; padding-top: 1.4rem; }
+  .lx__slogan { justify-self: center; font-size: .95rem; }
+  .lx__lema { justify-self: center; font-size: .62rem; letter-spacing: .16em; }
+}
+.lx__lema { white-space: nowrap; }
