@@ -135,6 +135,8 @@
   /* ---------- LOGIN ---------- */
   // Arte de fundo: assets/login-fundo.jpg (se não existir, fica o fundo escuro padrão)
   // Escudo: assets/login-escudo.png
+  // Tela larga o bastante para mostrar a arte inteira com os campos legíveis
+  const LOGIN_ARTE = window.matchMedia('(min-width: 900px) and (min-height: 500px)');
   const LOGIN_TAGS = [
     ['camera', 'Câmeras', 'CFTV'],
     ['shield', 'Alarmes', 'Monitoramento'],
@@ -190,7 +192,27 @@
 
     /* ----- Tela principal: Área técnica + Supervisão ----- */
     const ult = S().read('last_tecnico', null);
-    app().innerHTML = loginFrame(`
+    const arte = LOGIN_ARTE.matches;
+    if (arte) {
+      // Tela larga: a arte inteira (assets/login-fundo.jpg) é a tela; os campos e botões
+      // ficam por cima dos desenhados na arte, nas mesmas posições.
+      app().innerHTML = `
+        <main class="lxa">
+          <div class="lxa__stage">
+            <a class="lxa-hot lxa-hot--tec" href="#/login/tecnico" aria-label="Entrar como técnico"></a>
+            ${ult ? `<button type="button" class="lxa-cont" id="lg-cont">Continuar como <b>${VG.esc(ult.nome.split(' ')[0])}</b> ›</button>` : ''}
+            <form id="login-form" novalidate autocomplete="on">
+              <label for="lg-user" class="sr-only">Usuário</label>
+              <input id="lg-user" class="lxa-in lxa-in--user" name="username" placeholder="Usuário" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+              <label for="lg-pass" class="sr-only">Senha</label>
+              <input id="lg-pass" class="lxa-in lxa-in--pass" type="password" name="password" placeholder="Senha" autocomplete="current-password" required>
+              <button type="button" class="lxa-eye" id="lg-eye" aria-label="Mostrar senha" title="Mostrar senha">${VG.icon('eye')}</button>
+              <div class="sr-only" id="lg-err" role="alert"></div>
+              <button type="submit" class="lxa-hot lxa-hot--ent" id="lg-btn" aria-label="Entrar"><span class="lxa-busy"></span></button>
+            </form>
+          </div>
+        </main>`;
+    } else app().innerHTML = loginFrame(`
       <div class="lx-cards">
         <section class="lx-card">
           <div class="lx-card__head">
@@ -219,6 +241,8 @@
           </form>
         </section>
       </div>`);
+    // ao girar o tablet / redimensionar a janela, troca de versão
+    LOGIN_ARTE.onchange = () => { if (/^#\/login(\/supervisora)?$|^#?$/.test(location.hash || '#/login') && !VG.Auth.current()) renderLogin(modo); };
     const c = VG.$('#lg-cont');
     if (c) c.onclick = () => entrarTecnico(ult, c);
 
@@ -237,7 +261,7 @@
     VG.$('#login-form').onsubmit = (e) => {
       e.preventDefault();
       err.textContent = '';
-      if (!user.value.trim() || !pass.value) { err.textContent = 'Informe usuário e senha.'; return; }
+      if (!user.value.trim() || !pass.value) { err.textContent = 'Informe usuário e senha.'; if (arte) { VG.toast('Informe usuário e senha.', 'warn'); (user.value.trim() ? pass : user).focus(); } return; }
       const btn = VG.$('#lg-btn');
       VG.setBusy(btn, true, 'Entrando…');
       (async () => {
@@ -245,8 +269,9 @@
         if (!r.ok) {
           VG.setBusy(btn, false);
           err.textContent = r.erro;
+          if (arte) VG.toast(r.erro, 'error', 5000);
           pass.value = ''; pass.focus();
-          btn.closest('.lx-card').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
+          btn.closest('.lx-card, .lxa__stage').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
           return;
         }
         if (r.session.papel === 'tecnico') S().write('last_tecnico', { id: r.session.tecnicoId, nome: r.session.nome });
