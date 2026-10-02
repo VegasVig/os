@@ -86,7 +86,7 @@
     const tecnicos = S.list('tecnicos');
     const counts = {};
     ordens.forEach((o) => (counts[o.status] = (counts[o.status] || 0) + 1));
-    const urgentes = ordens.filter((o) => o.prioridade === 'urgente' && !['concluida', 'cancelada'].includes(o.status)).length;
+    const urgentes = ordens.filter((o) => o.prioridade === 'urgente' && !VG.ENCERRADAS.includes(o.status)).length;
 
     const card = (key, icon, label, value, foot, href) => `
       <a class="panel stat" href="${href}" style="--c:${key ? css(VG.STATUS[key].cssVar) : 'var(--steel)'}">
@@ -124,7 +124,7 @@
           ${card('aguardando_tecnico', 'hourglass', 'Aguardando técnico', counts.aguardando_tecnico || 0, 'Enviadas, não iniciadas', '#/os?status=aguardando_tecnico')}
           ${card('em_atendimento', 'wrench', 'Em atendimento', counts.em_atendimento || 0, 'Técnico em campo', '#/os?status=em_atendimento')}
           ${card('aguardando_cliente', 'pen', 'Aguardando cliente', counts.aguardando_cliente || 0, 'Falta a assinatura', '#/os?status=aguardando_cliente')}
-          ${card('concluida', 'check', 'Concluídas', counts.concluida || 0, 'Assinadas pelo cliente', '#/os?status=concluida')}
+          ${card('concluida', 'check', 'Concluídas', (counts.concluida || 0) + (counts.processada || 0) + (counts.reaberta || 0), 'Assinadas pelo cliente', '#/os?status=concluida')}
           ${card('cancelada', 'ban', 'Canceladas', counts.cancelada || 0, 'Encerradas sem execução', '#/os?status=cancelada')}
           ${card(null, 'users', 'Clientes', clientes.filter((c) => c.status !== 'inativo').length, `${clientes.length} cadastrados`, '#/clientes')}
           ${card(null, 'shield', 'Técnicos', tecnicos.filter((t) => t.ativo !== false).length, 'Ativos na equipe', '#/tecnicos')}

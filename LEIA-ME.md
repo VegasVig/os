@@ -14,6 +14,7 @@ O sistema começa vazio, só com o usuário `supervisora`.
 | `luzia` | `Vegas4747@` | Só as OS que a Luzia abriu |
 | `talita` | `Vegas4747!` | Só as OS que a Talita abriu |
 | `supervisora` | `Vegas4747@!` | Supervisão geral: todas as OS |
+| `Supervisao Estoque` | `Vegas4747` | Todas as OS, para conferir materiais e estoque |
 
 - **Cada supervisora vê só as OS dela** no Dashboard, na lista de OS, nos Relatórios e na atividade recente. Uma não consegue abrir nem alterar a OS da outra, nem pelo endereço.
 - **Clientes e técnicos são compartilhados.** As duas usam o mesmo cadastro.
@@ -22,6 +23,23 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Importar backup e Apagar todos os dados** ficam só com a supervisão geral, porque mexem nas OS de todas.
 - **OS abertas antes desta atualização** não têm dona. Por isso, continuam aparecendo para as duas.
 - **Troca de senha:** cada uma troca a própria em **Configurações → Alterar minha senha**.
+- **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
+
+## Materiais e conferência da OS
+- **Tipo de OS Venda:** aparece junto dos outros tipos, na aba **Manutenção**.
+- **Materiais para levar:** ao criar ou editar a OS, a supervisora informa código, material e quantidade do que o técnico deve levar.
+- **Utilizou algum material?:** para finalizar, o técnico responde **SIM** ou **NÃO**.
+  - Com **SIM**, ele informa os materiais usados e a quantidade. Pode tocar num material separado pela supervisão e ajustar a quantidade.
+  - Com **NÃO**, a OS registra "Não foi utilizado material".
+- **Sem valores na OS:** a OS, a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. Valores lançados antes desta versão continuam guardados na planilha e aparecem apenas na exportação CSV de **Relatórios**.
+- **Conferência:** depois que o cliente assina, a OS fica em **Realizadas**. A supervisão abre a OS e confere, no quadro **Conferência da OS**, o que foi enviado e o que foi utilizado. Depois clica em **Marcar como processada**.
+- **Reabrir OS:** numa OS processada, o botão **Reabrir OS** pede o motivo.
+  - A OS fica **Reaberta** e permite **Corrigir materiais utilizados** e **Corrigir dados da OS**.
+  - Depois é só processar de novo. Nada é apagado: cada passo fica no histórico.
+- **Filtros na lista de OS:**
+  - **Status:** Todas, Pendente, Realizada, Processada, Reaberta, mais os status de antes.
+  - **Material:** Todas, Com material utilizado ou Sem material utilizado. Vale também para as OS antigas.
+- **Realizadas:** cada linha mostra o **OS nº** e o **Cliente nº** (código do cadastro do cliente).
 
 ## Como funciona no dia a dia
 1. **Tela inicial:** ao abrir o sistema, a pessoa escolhe **Técnico** ou **Supervisora**.

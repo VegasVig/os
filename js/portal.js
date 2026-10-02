@@ -74,13 +74,20 @@
         <div class="panel__body stack">
           <div><div class="kv__k">Diagnóstico</div><p class="text-block">${VG.esc(a.diagnostico || '—')}</p></div>
           <div><div class="kv__k">Serviço executado</div><p class="text-block">${VG.esc(a.servico || '—')}</p></div>
-          <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.OS.materiaisHTML(a.materiais)}</div>
+          <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os)}</div>
           <div><div class="kv__k">Observações do técnico</div><p class="text-block">${VG.esc(a.observacoes || '—')}</p></div>
           ${os.assinaturaCliente && os.assinaturaCliente.observacoes ? `<div><div class="kv__k">Observações do cliente</div><p class="text-block">${VG.esc(os.assinaturaCliente.observacoes)}</p></div>` : ''}
         </div></section>
       <section class="panel"><div class="panel__head"><h3>${VG.icon('camera')}Fotos</h3></div><div class="panel__body" data-fotos>${VG.OS.fotosHTML(a.fotos)}</div></section>
       <section class="panel"><div class="panel__head"><h3>${VG.icon('pen')}Assinaturas</h3></div>
         <div class="panel__body sig-view">${VG.OS.sigHTML('Técnico', os.assinaturaTecnico)}${VG.OS.sigHTML('Cliente', os.assinaturaCliente)}</div></section>`;
+  }
+
+  /** Técnico: materiais que a supervisão separou para levar */
+  function levarHTML(os) {
+    return `
+      <section class="panel"><div class="panel__head"><h3>${VG.icon('box')}Materiais para levar</h3><span class="faint" style="font-size:.8rem">Separados pela supervisão</span></div>
+        <div class="panel__body">${VG.Mat.tabelaHTML(os.materiaisLevar, 'Qtd. para levar', 'Nenhum material separado pela supervisão para esta OS.')}</div></section>`;
   }
 
   function doneHTML(os) {
@@ -122,17 +129,15 @@
         <div class="panel__body"><div class="field"><label for="p-serv" class="sr-only">Serviço executado</label>
           <textarea id="p-serv" class="textarea lg" data-auto="servico" placeholder="Descreva o que foi realizado.">${VG.esc(a.servico)}</textarea></div></div></section>
 
-      <section class="panel"><div class="panel__head"><h3>${VG.icon('box')}Materiais utilizados</h3></div>
+      <section class="panel" id="p-mat"><div class="panel__head"><h3>${VG.icon('box')}Materiais utilizados<span class="req">*</span></h3></div>
         <div class="panel__body">
-          <div class="mat-add">
-            <div class="field"><label for="m-desc">Material</label><input id="m-desc" class="input" placeholder="Ex.: Cabo UTP" list="m-sug"></div>
-            <div class="field"><label for="m-qtd">Qtd.</label><input id="m-qtd" class="input" type="number" min="0" step="any" inputmode="decimal" value="1"></div>
-            <div class="field"><label for="m-un">Unidade</label><select id="m-un" class="select">${VG.options(VG.UNIDADES, VG.UNIDADES[0])}</select></div>
-            <div class="field"><label for="m-val">Valor unit. (R$)</label><input id="m-val" class="input" inputmode="decimal" placeholder="Opcional" autocomplete="off"></div>
-            <button type="button" class="btn" id="m-add">${VG.icon('plus')}<span>Adicionar</span></button>
-          </div>
-          <datalist id="m-sug">${['Cabo UTP', 'Conector RJ45', 'Fonte 12V', 'Conector BNC', 'Balun', 'Bateria 12V 7Ah', 'Sensor infravermelho', 'Cabo coaxial', 'HD 1TB', 'Fio de cerca elétrica', 'Isolador', 'Caixa de passagem'].map((x) => `<option value="${x}">`).join('')}</datalist>
-          <ul class="mat-list" id="m-list"></ul>
+          <div class="mat-q"><span class="label">UTILIZOU ALGUM MATERIAL?</span>
+            <div class="seg">
+              <input type="radio" name="m-usou" id="m-sim" value="sim" ${a.usouMaterial === true ? 'checked' : ''}><label for="m-sim">SIM</label>
+              <input type="radio" name="m-usou" id="m-nao" value="nao" ${a.usouMaterial === false ? 'checked' : ''}><label for="m-nao">NÃO</label>
+            </div></div>
+          <div id="m-nao-box" class="notice notice--info ${a.usouMaterial === false ? '' : 'hidden'}">${VG.icon('info')}<div>Não foi utilizado material.</div></div>
+          <div id="m-ed" class="${a.usouMaterial === true ? '' : 'hidden'}">${VG.Mat.editorHTML('m', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}</div>
         </div></section>
 
       <section class="panel"><div class="panel__head"><h3>${VG.icon('camera')}Fotos</h3><span class="faint" style="font-size:.8rem">Até ${MAX_FOTOS} por grupo</span></div>
@@ -169,31 +174,28 @@
     const autosave = VG.debounce(persist, 500);
     VG.$$('[data-auto]', body).forEach((t) => t.addEventListener('input', () => { a[t.dataset.auto] = t.value; autosave(); }));
 
-    // Materiais
-    const list = VG.$('#m-list', body);
-    const drawMats = () => {
-      list.innerHTML = a.materiais.length ? a.materiais.map((m) => `
-        <li>${VG.icon('box')}<span>${VG.esc(m.descricao)}${m.valor != null ? `<small class="mat-val">${VG.esc(VG.fmtMoney(m.valor))} cada</small>` : ''}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}${m.valor != null ? `<small class="mat-val">${VG.esc(VG.fmtMoney(VG.matTotal(m)))}</small>` : ''}</b>
-          <button type="button" class="btn btn-ghost btn-icon" data-rm="${m.id}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
-        : '<li class="faint" style="justify-content:center">Nenhum material adicionado.</li>';
-      const tot = VG.matsTotal(a.materiais);
-      if (tot != null) list.innerHTML += `<li class="mat-total"><span>Total dos materiais</span><b>${VG.esc(VG.fmtMoney(tot))}</b></li>`;
-      VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => { a.materiais = a.materiais.filter((m) => m.id !== b.dataset.rm); persist(); drawMats(); }));
+    // Materiais: pergunta SIM/NÃO + itens utilizados (código, material e quantidade — sem valores)
+    // OS antigas já com materiais lançados contam como SIM
+    if (a.usouMaterial !== true && a.usouMaterial !== false && a.materiais.length) a.usouMaterial = true;
+    const ed = VG.Mat.bindEditor(body, 'm', () => a.materiais, { levar: os.materiaisLevar || [], onChange: persist, vazio: 'Nenhum material adicionado ainda.' });
+    const mostrarMat = () => {
+      VG.$('#m-ed', body).classList.toggle('hidden', a.usouMaterial !== true);
+      VG.$('#m-nao-box', body).classList.toggle('hidden', a.usouMaterial !== false);
+      const r = VG.$(a.usouMaterial === true ? '#m-sim' : a.usouMaterial === false ? '#m-nao' : '#m-none', body);
+      if (r) r.checked = true;
     };
-    const addMat = () => {
-      const d = VG.$('#m-desc', body), q = VG.$('#m-qtd', body), u = VG.$('#m-un', body), vl = VG.$('#m-val', body);
-      const valor = VG.parseMoney(vl.value);
-      if (Number.isNaN(valor)) { vl.focus(); return VG.toast('Valor inválido. Use por exemplo 12,50 — ou deixe em branco.', 'warn'); }
-      const desc = d.value.trim(), qtd = Number(String(q.value).replace(',', '.'));
-      if (!desc) { d.focus(); return VG.toast('Informe o material.', 'warn'); }
-      if (!(qtd > 0)) { q.focus(); return VG.toast('Informe uma quantidade válida.', 'warn'); }
-      a.materiais.push({ id: VG.uid(), descricao: desc, quantidade: qtd, unidade: u.value, valor });
-      persist(); drawMats();
-      d.value = ''; q.value = 1; vl.value = ''; d.focus();
-    };
-    VG.$('#m-add', body).onclick = addMat;
-    ['#m-desc', '#m-val'].forEach((sel) => VG.$(sel, body).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } }));
-    drawMats();
+    VG.$$('input[name=m-usou]', body).forEach((r) => (r.onchange = async () => {
+      if (r.value === 'nao' && a.materiais.length) {
+        const n = a.materiais.length;
+        if (!(await VG.confirm(`Você já adicionou ${n} ${n === 1 ? 'material' : 'materiais'}. Marcar NÃO remove ${n === 1 ? 'esse item' : 'esses itens'}. Continuar?`, { title: 'Nenhum material utilizado?', ok: 'Sim, não utilizei', danger: true }))) { mostrarMat(); return; }
+        a.materiais = [];
+        ed.draw();
+      }
+      a.usouMaterial = r.value === 'sim';
+      persist();
+      mostrarMat();
+    }));
+    mostrarMat();
 
     // Fotos
     ['antes', 'depois'].forEach((g) => {
@@ -249,6 +251,9 @@
       VG.$$('.field.invalid', body).forEach((x) => x.classList.remove('invalid'));
       if (!a.diagnostico) return bad('#p-diag', 'Informe o diagnóstico.');
       if (!a.servico) return bad('#p-serv', 'Descreva o serviço executado.');
+      if (a.usouMaterial !== true && a.usouMaterial !== false) return bad('#p-mat', 'Responda: utilizou algum material? (SIM ou NÃO)');
+      if (a.usouMaterial === true && !a.materiais.length) return bad('#m-desc', 'Informe quais materiais foram utilizados e a quantidade, ou marque NÃO.');
+      if (a.usouMaterial === false) a.materiais = [];
       if (!nome) return bad('#t-nome', 'Informe o nome do técnico.');
       if (pad.isEmpty()) { VG.$('#t-sig', body).scrollIntoView({ behavior: 'smooth', block: 'center' }); return VG.toast('Assine no quadro antes de finalizar.', 'warn'); }
       if (!(await VG.confirm('Depois de finalizar, o atendimento não poderá mais ser alterado pelo técnico e seguirá para a assinatura do cliente.', { title: 'Finalizar atendimento?', ok: 'Finalizar' }))) return;
@@ -256,6 +261,7 @@
       os.assinaturaTecnico = { nome, imagem: pad.toDataURL(), dataHora: agora };
       a.fim = agora;
       os.status = 'aguardando_cliente';
+      S().hist(os, a.usouMaterial ? `Material utilizado: ${VG.Mat.resumo(a.materiais)}.` : 'Não foi utilizado material.', nome);
       S().hist(os, 'Técnico finalizou atendimento.', nome);
       S().hist(os, 'Técnico assinou.', nome);
       S().save('ordens', os);
@@ -263,7 +269,7 @@
       VG.setBusy(btnF, true, 'Enviando…');
       try { await S().flush(os.id); }
       catch (e) {
-        os.status = 'em_atendimento'; os.assinaturaTecnico = null; a.fim = null; os.historico.splice(-2, 2);
+        os.status = 'em_atendimento'; os.assinaturaTecnico = null; a.fim = null; os.historico.splice(-3, 3);
         VG.setBusy(btnF, false); return;
       }
       VG.toast('Atendimento finalizado. Agora falta a assinatura do cliente.', 'success');
@@ -375,7 +381,7 @@
         return;
       }
 
-      if (st === 'concluida') {
+      if (VG.isConcluida(st)) {
         html += doneHTML(os);
         if (state.verResumo) html += `<div class="stack" id="resumo">${clienteHTML(os, papel)}${problemaEquipHTML(os)}${atendimentoHTML(os)}</div>`;
         body.innerHTML = html;
@@ -389,7 +395,7 @@
       }
 
       if (papel === 'tecnico') {
-        html += clienteHTML(os, papel) + problemaEquipHTML(os);
+        html += clienteHTML(os, papel) + problemaEquipHTML(os) + levarHTML(os);
         if (st === 'aberta' || st === 'aguardando_tecnico') {
           html += `
             <section class="panel"><div class="panel__body" style="display:grid;gap:.8rem;justify-items:center;text-align:center;padding:1.8rem 1.25rem">

@@ -30,7 +30,7 @@
               const u = userOf(t);
               const minhas = ordens.filter((o) => o.tecnicoId === t.id);
               const abertas = minhas.filter((o) => ['aguardando_tecnico', 'em_atendimento', 'aguardando_cliente'].includes(o.status)).length;
-              const concl = minhas.filter((o) => o.status === 'concluida').length;
+              const concl = minhas.filter((o) => VG.isConcluida(o.status)).length;
               return `<tr data-id="${t.id}">
                 <td data-label="Técnico"><div style="display:flex;align-items:center;gap:.7rem"><span class="avatar" style="width:34px;height:34px;font-size:.78rem">${VG.initials(t.nome)}</span><div><span class="strong">${VG.esc(t.nome)}</span><span class="sub">${VG.esc(t.email || '')}</span></div></div></td>
                 <td data-label="Especialidade">${VG.esc(t.especialidade || '—')}</td>
@@ -109,7 +109,7 @@
           else S().save('users', user);
 
           // mantém o nome atualizado nas OS em aberto
-          if (id) S().list('ordens').filter((o) => o.tecnicoId === id && o.status !== 'concluida').forEach((o) => { o.tecnicoNome = obj.nome; S().save('ordens', o); });
+          if (id) S().list('ordens').filter((o) => o.tecnicoId === id && !VG.isConcluida(o.status)).forEach((o) => { o.tecnicoNome = obj.nome; S().save('ordens', o); });
           VG.toast(id ? 'Técnico atualizado.' : `Técnico ${obj.nome} cadastrado. Ele já aparece na tela de entrada.`, 'success');
           done && done();
         } },

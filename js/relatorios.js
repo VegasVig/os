@@ -28,7 +28,7 @@
   };
   const media = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
   const duracao = (o) => (o.atendimento && o.atendimento.inicio && o.atendimento.fim ? new Date(o.atendimento.fim) - new Date(o.atendimento.inicio) : null);
-  const ciclo = (o) => (o.status === 'concluida' && o.assinaturaCliente ? new Date(o.assinaturaCliente.dataHora) - new Date(o.criadaEm) : null);
+  const ciclo = (o) => (VG.isConcluida(o.status) && o.assinaturaCliente ? new Date(o.assinaturaCliente.dataHora) - new Date(o.criadaEm) : null);
 
   function filtrar() {
     const { de, ate } = intervalo();
@@ -79,7 +79,7 @@
     const box = VG.$('#r-body', el);
     const list = filtrar();
     if (!list.length) { box.innerHTML = `<section class="panel">${VG.empty('chart', 'Sem ordens no período', 'Altere o período para ver os indicadores.')}</section>`; return; }
-    const concl = list.filter((o) => o.status === 'concluida');
+    const concl = list.filter((o) => VG.isConcluida(o.status));
     const canc = list.filter((o) => o.status === 'cancelada');
     const validas = list.length - canc.length;
     const taxa = validas ? Math.round((concl.length / validas) * 100) : 0;
@@ -92,8 +92,8 @@
     const tecnicos = S().list('tecnicos');
     const linhasTec = tecnicos.map((t) => {
       const os = list.filter((o) => o.tecnicoId === t.id);
-      const c = os.filter((o) => o.status === 'concluida');
-      return { nome: t.nome, total: os.length, concl: c.length, abertas: os.filter((o) => !['concluida', 'cancelada'].includes(o.status)).length, tempo: horas(media(os.map(duracao).filter((x) => x != null))) };
+      const c = os.filter((o) => VG.isConcluida(o.status));
+      return { nome: t.nome, total: os.length, concl: c.length, abertas: os.filter((o) => !VG.ENCERRADAS.includes(o.status)).length, tempo: horas(media(os.map(duracao).filter((x) => x != null))) };
     }).filter((x) => x.total).sort((a, b) => b.total - a.total);
     const semTec = list.filter((o) => !o.tecnicoId).length;
 

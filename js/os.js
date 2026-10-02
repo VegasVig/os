@@ -8,8 +8,24 @@
   const S = () => VG.Store;
   const me = () => VG.Auth.current() || {};
 
-  const FINAIS = ['concluida', 'cancelada'];
-  let filtros = { q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' };
+  // FINAIS: não podem mais ser editadas. Reaberta pode ser corrigida, mas não cancelada.
+  const FINAIS = ['concluida', 'cancelada', 'processada'];
+  const SEM_CANCELAR = FINAIS.concat(['reaberta']);
+  const VAZIO = () => ({ q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '', material: '' });
+  let filtros = VAZIO();
+  /** Situações do filtro de status (somadas aos status que já existiam) */
+  const SITUACOES = [
+    { value: 'pendente', label: 'Pendente', sub: 'realizar' },
+    { value: 'realizada', label: 'Realizada', sub: 'realizadas' },
+    { value: 'processada', label: 'Processada', sub: 'realizadas' },
+    { value: 'reaberta', label: 'Reaberta', sub: 'realizadas' },
+  ];
+  const subDoStatus = (st) => (!st ? null : (SITUACOES.find((x) => x.value === st) || {}).sub || (st === 'concluida' ? 'realizadas' : st === 'cancelada' ? 'canceladas' : 'realizar'));
+  const passaStatus = (o, st) => !st
+    || (st === 'pendente' ? grupoStatus(o) === 'realizar' : st === 'realizada' ? o.status === 'concluida' : o.status === st);
+  const passaMaterial = (o, m) => !m || (m === 'com' ? VG.Mat.usou(o) === true : VG.Mat.usou(o) === false);
+  /** Número/código do cliente: o gravado na OS ou, para OS antigas, o do cadastro */
+  const codCliente = (o) => (o.cliente && o.cliente.codigo) || ((o.clienteId && S().get('clientes', o.clienteId)) || {}).codigo || '';
 
   /* ---------- Abas da supervisora ---------- */
   // Instalação tem aba própria; os demais tipos (Manutenção, Preventiva, Corretiva,
@@ -19,7 +35,7 @@
   let aba = lerAba('vegas_os_aba', 'manutencao');
   let sub = lerAba('vegas_os_sub', 'realizar');
   const grupoTipo = (o) => (VG.norm(o.tipo) === 'instalacao' ? 'instalacao' : 'manutencao');
-  const grupoStatus = (o) => (o.status === 'concluida' ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
+  const grupoStatus = (o) => (VG.isConcluida(o.status) ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
   const PESO = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
   const COR_PRIO = { urgente: 'red', alta: 'orange', normal: 'blue', baixa: 'gray' };
   const dot = (p) => { const k = COR_PRIO[p] ? p : 'normal'; return `<span class="os-dot os-dot--${COR_PRIO[k]}${k === 'urgente' ? ' os-dot--pulse' : ''}" title="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}" aria-label="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}"></span>`; };
@@ -44,6 +60,7 @@
       (!f.cliente || o.clienteId === f.cliente) &&
       (!f.prioridade || o.prioridade === f.prioridade) &&
       (!f.tipo || o.tipo === f.tipo) &&
+      passaMaterial(o, f.material) &&
       (!de || new Date(o.criadaEm) >= de) && (!ate || new Date(o.criadaEm) <= ate) &&
       matches(o, f.q));
   }
@@ -51,8 +68,8 @@
   /* ---------- LISTA ---------- */
   function renderList(el, params = {}) {
     // filtros vindos da URL (#/os?status=...)
-    if (Object.keys(params).length) filtros = Object.assign({ q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' }, params);
-    if (params.status) { sub = params.status === 'concluida' ? 'realizadas' : params.status === 'cancelada' ? 'canceladas' : 'realizar'; if (sub !== 'realizar') filtros.status = ''; }
+    if (Object.keys(params).length) filtros = Object.assign(VAZIO(), params);
+    if (params.status) { sub = subDoStatus(params.status); if (params.status === 'concluida' || params.status === 'cancelada') filtros.status = ''; }
     if (params.tipo) { aba = VG.norm(params.tipo) === 'instalacao' ? 'instalacao' : 'manutencao'; filtros.tipo = VG.norm(params.tipo) === 'instalacao' || VG.norm(params.tipo) === 'manutencao' ? '' : params.tipo; }
     const tecnicos = S().list('tecnicos');
     const clientes = S().list('clientes').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -72,7 +89,10 @@
             <div class="field field--search"><label for="f-q">Pesquisar OS</label>
               <div class="input-group">${VG.icon('search')}<input id="f-q" class="input" placeholder="Nº, cliente, CPF/CNPJ, técnico, equipamento…" value="${VG.esc(f.q)}"></div></div>
             <button type="button" class="btn btn-sm os-filtros-btn" id="f-toggle">${VG.icon('search')}<span>Filtros</span></button>
-            <div class="field" id="f-status-box"><label for="f-status">Status</label><select id="f-status" class="select" data-f="status">${VG.options(Object.entries(VG.STATUS).filter(([k]) => !FINAIS.includes(k)).map(([k, x]) => ({ value: k, label: x.label })), f.status, 'Todos')}</select></div>
+            <div class="field" id="f-status-box"><label for="f-status">Status</label><select id="f-status" class="select" data-f="status"><option value="">Todas</option>
+              <optgroup label="Situação">${VG.options(SITUACOES, f.status)}</optgroup>
+              <optgroup label="A realizar">${VG.options(Object.entries(VG.STATUS).filter(([k]) => !VG.ENCERRADAS.includes(k)).map(([k, x]) => ({ value: k, label: x.label })), f.status)}</optgroup></select></div>
+            <div class="field"><label for="f-mat">Material</label><select id="f-mat" class="select" data-f="material">${VG.options([{ value: 'com', label: 'Com material utilizado' }, { value: 'sem', label: 'Sem material utilizado' }], f.material, 'Todas')}</select></div>
             <div class="field"><label for="f-tec">Técnico</label><select id="f-tec" class="select" data-f="tecnico">${VG.options([{ value: '_sem', label: 'Sem técnico' }, ...tecnicos.map((t) => ({ value: t.id, label: t.nome }))], f.tecnico, 'Todos')}</select></div>
             <div class="field"><label for="f-cli">Cliente</label><select id="f-cli" class="select" data-f="cliente">${VG.options(clientes.map((c) => ({ value: c.id, label: c.nome })), f.cliente, 'Todos')}</select></div>
             <div class="field"><label for="f-pr">Prioridade</label><select id="f-pr" class="select" data-f="prioridade">${VG.options(Object.entries(VG.PRIORIDADES).map(([k, p]) => ({ value: k, label: p.label })), f.prioridade, 'Todas')}</select></div>
@@ -85,19 +105,24 @@
         </section>
       </div>`;
     VG.$('#f-q', el).addEventListener('input', VG.debounce((e) => { filtros.q = e.target.value; table(el); }, 200));
-    VG.$$('[data-f]', el).forEach((s) => (s.onchange = () => { filtros[s.dataset.f] = s.value; table(el); }));
+    VG.$$('[data-f]', el).forEach((s) => (s.onchange = () => {
+      filtros[s.dataset.f] = s.value;
+      // escolher um status leva direto para a aba onde ele aparece
+      if (s.dataset.f === 'status' && s.value) { sub = subDoStatus(s.value); gravarAba('vegas_os_sub', sub); }
+      table(el);
+    }));
     VG.$('#f-toggle', el).onclick = () => VG.$('#os-toolbar', el).classList.toggle('is-open');
     VG.$('#os-import', el).onclick = () => VG.OSCSV.importar(() => table(el));
-    VG.$('#f-clear', el).onclick = () => { filtros = { q: '', status: '', tecnico: '', cliente: '', de: '', ate: '', prioridade: '', tipo: '' }; if (location.hash !== '#/os') location.hash = '#/os'; else renderList(el); };
+    VG.$('#f-clear', el).onclick = () => { filtros = VAZIO(); if (location.hash !== '#/os') location.hash = '#/os'; else renderList(el); };
     table(el);
   }
 
   function table(el) {
     const box = VG.$('#os-table', el);
     const all = S().list('ordens');
-    // status só vale em "A realizar"; tipo só vale dentro de Manutenção
+    // tipo só vale dentro de Manutenção
     const filtradas = aplicarFiltros(all, Object.assign({}, filtros, { status: '', tipo: '' }))
-      .filter((o) => grupoStatus(o) !== 'realizar' || !filtros.status || o.status === filtros.status)
+      .filter((o) => passaStatus(o, filtros.status))
       .filter((o) => grupoTipo(o) !== 'manutencao' || !filtros.tipo || o.tipo === filtros.tipo);
     const doTipo = filtradas.filter((o) => grupoTipo(o) === aba);
     const conta = (g, st) => filtradas.filter((o) => grupoTipo(o) === g && (!st || grupoStatus(o) === st)).length;
@@ -119,8 +144,12 @@
         <span class="os-legend">${['urgente', 'alta', 'normal', 'baixa'].map((p) => `<span>${dot(p)}${VG.PRIORIDADES[p].label}</span>`).join('')}</span>
       </div>`;
     tabs.querySelectorAll('[data-aba]').forEach((b) => (b.onclick = () => { aba = b.dataset.aba; gravarAba('vegas_os_aba', aba); table(el); }));
-    tabs.querySelectorAll('[data-sub]').forEach((b) => (b.onclick = () => { sub = b.dataset.sub; gravarAba('vegas_os_sub', sub); table(el); }));
-    const stBox = VG.$('#f-status-box', el); if (stBox) stBox.classList.toggle('hidden', sub !== 'realizar');
+    tabs.querySelectorAll('[data-sub]').forEach((b) => (b.onclick = () => {
+      sub = b.dataset.sub; gravarAba('vegas_os_sub', sub);
+      // status de outra aba deixaria a lista vazia: volta para "Todas"
+      if (filtros.status && subDoStatus(filtros.status) !== sub) { filtros.status = ''; const fs = VG.$('#f-status', el); if (fs) fs.value = ''; }
+      table(el);
+    }));
     const tpBox = VG.$('#f-tipo-box', el); if (tpBox) tpBox.classList.toggle('hidden', aba === 'instalacao');
 
     const hoje = VG.toInputDate();
@@ -155,13 +184,19 @@
     };
     const detalhe = (o) => [aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
 
+    const real = sub === 'realizadas';
+    const numHTML = (o) => {
+      if (!real) return `#${o.numero}`;
+      const cc = codCliente(o);
+      return `<span title="OS nº ${o.numero} · Cliente nº ${VG.esc(cc || '—')}">OS nº ${o.numero}<small>Cliente nº ${VG.esc(cc || '—')}</small></span>`;
+    };
     box.innerHTML = `
-      <div class="os-lines" role="list">
+      <div class="os-lines${real ? ' os-lines--real' : ''}" role="list">
         ${list.map((o) => `
           <div class="os-line" role="listitem" data-id="${o.id}" tabindex="0">
             ${dot(o.prioridade)}
             <span class="os-line__cli"><b>${VG.esc((o.cliente && o.cliente.nome) || '—')}</b>${detalhe(o) ? `<small>${VG.esc(detalhe(o))}</small>` : ''}</span>
-            <span class="os-line__num">#${o.numero}</span>
+            <span class="os-line__num">${numHTML(o)}</span>
             <span class="os-line__tec">${o.tecnicoNome ? VG.esc(o.tecnicoNome.split(' ').slice(0, 2).join(' ')) : '<span class="faint">sem técnico</span>'}</span>
             <span class="os-line__date">${quando(o)}</span>
             <span class="os-line__st">${VG.badge(o.status)}</span>
@@ -169,7 +204,7 @@
               <button class="btn btn-ghost btn-icon" data-act="edit" title="Editar" aria-label="Editar" ${FINAIS.includes(o.status) ? 'disabled' : ''}>${VG.icon('edit')}</button>
               <button class="btn btn-ghost btn-icon" data-act="pdf" title="Gerar PDF" aria-label="Gerar PDF">${VG.icon('pdf')}</button>
               <button class="btn btn-ghost btn-icon" data-act="link" title="Copiar link" aria-label="Copiar link" ${o.status === 'cancelada' ? 'disabled' : ''}>${VG.icon('link')}</button>
-              <button class="btn btn-ghost btn-icon" data-act="cancel" title="Cancelar OS" aria-label="Cancelar OS" ${FINAIS.includes(o.status) ? 'disabled' : ''}>${VG.icon('ban')}</button>
+              <button class="btn btn-ghost btn-icon" data-act="cancel" title="Cancelar OS" aria-label="Cancelar OS" ${SEM_CANCELAR.includes(o.status) ? 'disabled' : ''}>${VG.icon('ban')}</button>
             </span>
           </div>`).join('')}
       </div>
@@ -200,6 +235,9 @@
     const c = os ? os.cliente : {};
     const e = os ? os.equipamento : {};
     const v = (x) => VG.esc(x || '');
+    const reaberta = editing && os.status === 'reaberta';
+    // materiais que o técnico deve levar (cópia de trabalho até salvar)
+    const levar = ((os && os.materiaisLevar) || []).map((m) => VG.Mat.limpar(m));
     const clienteSel = os ? os.clienteId : params.cliente || '';
 
     el.innerHTML = `
@@ -270,9 +308,17 @@
             <div class="panel__head"><h2>${VG.icon('shield')}Técnico e prazo</h2></div>
             <div class="panel__body grid grid-3">
               <div class="field"><label for="os-tec">Técnico responsável</label>
-                <select id="os-tec" name="tecnicoId" class="select">${VG.options(tecnicos.map((t) => ({ value: t.id, label: `${t.nome}${t.especialidade ? ' — ' + t.especialidade : ''}` })), os ? os.tecnicoId : '', 'Definir depois (OS fica aberta)')}</select></div>
+                <select id="os-tec" name="tecnicoId" class="select" ${reaberta ? 'disabled' : ''}>${VG.options(tecnicos.map((t) => ({ value: t.id, label: `${t.nome}${t.especialidade ? ' — ' + t.especialidade : ''}` })), os ? os.tecnicoId : '', 'Definir depois (OS fica aberta)')}</select>${reaberta ? '<span class="hint">OS reaberta: o técnico do atendimento é mantido.</span>' : ''}</div>
               <div class="field"><label for="os-pdata">Data prevista</label><input id="os-pdata" name="prazoData" type="date" class="input" value="${v(os ? os.prazoData : VG.toInputDate())}"></div>
               <div class="field"><label for="os-phora">Horário previsto</label><input id="os-phora" name="prazoHora" type="time" class="input" value="${v(os ? os.prazoHora : '')}"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel__head"><h2>${VG.icon('box')}Materiais para levar</h2><span class="faint" style="font-size:.8rem">Opcional</span></div>
+            <div class="panel__body">
+              <p class="hint" style="margin:0 0 .8rem">Separe aqui o que o técnico deve levar para o atendimento. Depois ele informa o que realmente foi utilizado.</p>
+              ${VG.Mat.editorHTML('lv', { codigoObrigatorio: true, qtdLabel: 'Qtd. para levar' })}
             </div>
           </section>
 
@@ -285,6 +331,7 @@
 
     const form = VG.$('#osf', el);
     VG.bindMasks(form);
+    VG.Mat.bindEditor(form, 'lv', () => levar, { codigoObrigatorio: true, vazio: 'Nenhum material separado para esta OS.' });
     const selCli = VG.$('#os-cli', el);
     const fillCliente = (cli) => {
       if (!cli) return;
@@ -324,9 +371,12 @@
       const cliente = {};
       ['nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep'].forEach((k) => (cliente[k] = (fd['c_' + k] || '').trim()));
       cliente.cpf_cnpj = VG.digits(cliente.cpf_cnpj); cliente.telefone = VG.digits(cliente.telefone); cliente.cep = VG.digits(cliente.cep); cliente.estado = cliente.estado.toUpperCase();
+      cliente.codigo = (S().get('clientes', fd.clienteId) || {}).codigo || (os && os.clienteId === fd.clienteId && os.cliente && os.cliente.codigo) || '';
+      const materiaisLevar = levar.map((m) => VG.Mat.limpar(m));
       const equipamento = {};
       ['tipo', 'marca', 'modelo', 'serie', 'patrimonio', 'local'].forEach((k) => (equipamento[k] = (fd['e_' + k] || '').trim()));
-      const tec = fd.tecnicoId ? S().get('tecnicos', fd.tecnicoId) : null;
+      // OS reaberta: o select fica travado (não entra no formulário) e o técnico é mantido
+      const tec = reaberta ? (os.tecnicoId ? { id: os.tecnicoId, nome: os.tecnicoNome } : null) : fd.tecnicoId ? S().get('tecnicos', fd.tecnicoId) : null;
       const autor = me().nome || 'Supervisora';
 
       try {
@@ -335,6 +385,7 @@
             numero: 0, criadaEm: VG.nowISO(), criadaPor: autor,
             prioridade: fd.prioridade || 'normal', tipo: fd.tipo, status: tec ? 'aguardando_tecnico' : 'aberta',
             clienteId: fd.clienteId, cliente, equipamento, problema: fd.problema.trim(),
+            materiaisLevar,
             tecnicoId: tec ? tec.id : null, tecnicoNome: tec ? tec.nome : '',
             prazoData: fd.prazoData || '', prazoHora: fd.prazoHora || '',
             tokenTecnico: '', tokenCliente: '',
@@ -342,6 +393,7 @@
             assinaturaTecnico: null, assinaturaCliente: null, historico: [],
           };
           S().hist(nova, 'OS criada pela supervisora.', autor);
+          if (materiaisLevar.length) S().hist(nova, `Materiais para levar: ${resumoMats(materiaisLevar)}.`, autor);
           if (tec) S().hist(nova, `OS enviada para ${tec.nome}.`, autor);
           Object.assign(nova, await S().createOS(nova)); // número e links gerados no servidor
           S().log(`OS #${nova.numero} criada`, nova.id, 'plus');
@@ -350,8 +402,10 @@
           VG.toast(tec ? `OS #${nova.numero} criada e enviada para ${tec.nome}. Ela já aparece na lista do técnico.` : `OS #${nova.numero} criada. Escolha o técnico na própria OS.`, 'success', 6000);
         } else {
           const antes = { tecnicoId: os.tecnicoId };
-          Object.assign(os, { prioridade: fd.prioridade, tipo: fd.tipo, clienteId: fd.clienteId, cliente, equipamento, problema: fd.problema.trim(), prazoData: fd.prazoData, prazoHora: fd.prazoHora });
-          S().hist(os, 'OS editada pela supervisora.', autor);
+          const levarMudou = resumoMats(os.materiaisLevar || []) !== resumoMats(materiaisLevar);
+          Object.assign(os, { prioridade: fd.prioridade, tipo: fd.tipo, clienteId: fd.clienteId, cliente, equipamento, problema: fd.problema.trim(), prazoData: fd.prazoData, prazoHora: fd.prazoHora, materiaisLevar });
+          S().hist(os, reaberta ? 'OS reaberta corrigida pela supervisora.' : 'OS editada pela supervisora.', autor);
+          if (levarMudou) S().hist(os, materiaisLevar.length ? `Materiais para levar atualizados: ${resumoMats(materiaisLevar)}.` : 'Materiais para levar removidos.', autor);
           if ((tec ? tec.id : null) !== antes.tecnicoId) {
             os.tecnicoId = tec ? tec.id : null;
             os.tecnicoNome = tec ? tec.nome : '';
@@ -375,6 +429,8 @@
       }
     });
   }
+
+  const resumoMats = (mats) => VG.Mat.resumo(mats);
 
   function criadaModal(os) {
     VG.modal({
@@ -466,13 +522,9 @@
       <div class="sig-card__name">${VG.esc(s ? s.nome : '—')}</div>
       <div class="sig-card__meta">${s ? `${s.documento ? 'Doc. ' + VG.esc(s.documento) + ' · ' : ''}${VG.fmtDateTime(s.dataHora)}` : ''}</div></div>`;
   }
+  /** Materiais da OS: somente código, material e quantidade (nunca valores) */
   function materiaisHTML(mats) {
-    if (!mats || !mats.length) return '<p class="faint" style="margin:0">Nenhum material registrado.</p>';
-    const tot = VG.matsTotal(mats);
-    if (tot == null) return `<table class="materials"><thead><tr><th>Material</th><th>Quantidade</th></tr></thead><tbody>${mats.map((m) => `<tr><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table>`;
-    // com valor: mostra unitário e total (itens sem valor ficam com "—", ex.: equipamento em locação)
-    return `<table class="materials"><thead><tr><th>Material</th><th>Quantidade</th><th>Valor unit.</th><th>Total</th></tr></thead><tbody>${mats.map((m) => `<tr><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td><td class="mono-num">${m.valor != null ? VG.esc(VG.fmtMoney(m.valor)) : '<span class="faint">—</span>'}</td><td class="mono-num">${m.valor != null ? VG.esc(VG.fmtMoney(VG.matTotal(m))) : '<span class="faint">—</span>'}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="3"><b>Total dos materiais</b></td><td class="mono-num"><b>${VG.esc(VG.fmtMoney(tot))}</b></td></tr></tfoot></table>`;
+    return VG.Mat.tabelaHTML(mats, 'Quantidade');
   }
 
   function renderDetail(el, id) {
@@ -480,6 +532,9 @@
     if (!os) { el.innerHTML = VG.empty('alert', 'OS não encontrada', 'Ela pode ter sido removida.', '<a class="btn" href="#/os">Voltar para a lista</a>'); return; }
     const c = os.cliente || {}, e = os.equipamento || {}, a = os.atendimento || {};
     const final = FINAIS.includes(os.status);
+    const semCancelar = SEM_CANCELAR.includes(os.status);
+    const reaberta = os.status === 'reaberta';
+    const cc = codCliente(os);
     el.innerHTML = `
       <div class="page">
         <div><a class="btn btn-ghost btn-sm" href="#/os">${VG.icon('back')}<span>Ordens de serviço</span></a></div>
@@ -488,6 +543,7 @@
             <div class="os-hero__num"><h1>OS #${os.numero}</h1>${VG.badge(os.status, true)}${VG.prioBadge(os.prioridade)}</div>
             <div class="os-hero__meta">
               <span>${VG.icon('calendar')}Aberta em ${VG.fmtDateTime(os.criadaEm)}${os.criadaPor ? ' por ' + VG.esc(os.criadaPor) : ''}</span>
+              <span>${VG.icon('users')}Cliente nº ${VG.esc(cc || '—')}</span>
               <span>${VG.icon('wrench')}${VG.esc(os.tipo)}</span>
               <span>${VG.icon('user')}${VG.esc(os.tecnicoNome || 'Sem técnico')}</span>
               ${os.prazoData ? `<span>${VG.icon('clock')}Prazo ${VG.fmtInputDate(os.prazoData)} ${VG.esc(os.prazoHora || '')}</span>` : ''}
@@ -497,7 +553,7 @@
             ${!final ? `<a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Editar</span></a>` : ''}
             ${os.status !== 'cancelada' ? `<button class="btn" id="d-links">${VG.icon('link')}<span>Links</span></button>` : ''}
             <button class="btn btn-primary" id="d-pdf">${VG.icon('pdf')}<span>Gerar PDF</span></button>
-            ${!final ? `<button class="btn btn-danger" id="d-cancel">${VG.icon('ban')}<span>Cancelar</span></button>` : ''}
+            ${!semCancelar ? `<button class="btn btn-danger" id="d-cancel">${VG.icon('ban')}<span>Cancelar</span></button>` : ''}
           </div>
         </section>
 
@@ -511,6 +567,7 @@
                 ${VG.kv('Nome / Razão social', c.nome)}${VG.kv('CPF/CNPJ', VG.fmtDoc(c.cpf_cnpj))}
                 ${VG.kv('Telefone', c.telefone ? `<a href="tel:${VG.digits(c.telefone)}">${VG.esc(VG.fmtPhone(c.telefone))}</a>` : '', true)}
                 ${VG.kv('E-mail', c.email)}
+                ${VG.kv('Nº do cliente', cc)}
                 <div class="kv__item" style="grid-column:1/-1"><div class="kv__k">Endereço</div><div class="kv__v">${VG.esc(VG.enderecoCompleto(c) || '—')} ${c.endereco ? `· <a href="${VG.mapsLink(c)}" target="_blank" rel="noopener">Abrir no mapa</a>` : ''}</div></div>
               </div></section>
 
@@ -520,12 +577,15 @@
             <section class="panel"><div class="panel__head"><h3>${VG.icon('alert')}Problema relatado</h3></div>
               <div class="panel__body"><p class="text-block">${VG.esc(os.problema)}</p></div></section>
 
+            <section class="panel"><div class="panel__head"><h3>${VG.icon('box')}Materiais para levar</h3><span class="faint" style="font-size:.8rem">Separados pela supervisão</span></div>
+              <div class="panel__body">${VG.Mat.tabelaHTML(os.materiaisLevar, 'Qtd. enviada', 'Nenhum material separado para esta OS.')}</div></section>
+
             <section class="panel"><div class="panel__head"><h3>${VG.icon('wrench')}Atendimento técnico</h3>
               <span class="faint" style="font-size:.8rem">${a.inicio ? `Início ${VG.fmtDateTime(a.inicio)}${a.fim ? ' · Fim ' + VG.fmtDateTime(a.fim) : ''}` : 'Não iniciado'}</span></div>
               <div class="panel__body stack">
                 <div><div class="kv__k">Diagnóstico</div><p class="text-block">${VG.esc(a.diagnostico || '—')}</p></div>
                 <div><div class="kv__k">Serviço executado</div><p class="text-block">${VG.esc(a.servico || '—')}</p></div>
-                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${materiaisHTML(a.materiais)}</div>
+                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os)}</div>
                 <div><div class="kv__k">Observações do técnico</div><p class="text-block">${VG.esc(a.observacoes || '—')}</p></div>
                 ${os.assinaturaCliente && os.assinaturaCliente.observacoes ? `<div><div class="kv__k">Observações do cliente</div><p class="text-block">${VG.esc(os.assinaturaCliente.observacoes)}</p></div>` : ''}
               </div></section>
@@ -534,7 +594,8 @@
           </div>
 
           <div class="stack">
-            ${!final ? tecnicoPanelHTML(os) : ''}
+            ${conferenciaHTML(os)}
+            ${!final && !reaberta ? tecnicoPanelHTML(os) : ''}
             <section class="panel"><div class="panel__head"><h3>${VG.icon('pen')}Assinaturas</h3></div>
               <div class="panel__body sig-view" style="grid-template-columns:1fr">${sigHTML('Técnico', os.assinaturaTecnico)}${sigHTML('Cliente', os.assinaturaCliente)}</div></section>
             <section class="panel"><div class="panel__head"><h3>${VG.icon('clock')}Histórico</h3></div>
@@ -559,6 +620,105 @@
       renderDetail(el, id);
     };
     bindThumbs(VG.$('#d-fotos', el), a.fotos || { antes: [], depois: [] });
+    bindConferencia(el, id);
+  }
+
+  /* ---------- CONFERÊNCIA DA SUPERVISÃO (processar / reabrir) ---------- */
+  const PODE_PROCESSAR = ['concluida', 'reaberta'];
+  function conferenciaHTML(os) {
+    if (!['aguardando_cliente'].concat(VG.CONCLUIDAS).includes(os.status)) return '';
+    const st = os.status;
+    const nLevar = (os.materiaisLevar || []).length, nUsados = ((os.atendimento && os.atendimento.materiais) || []).length;
+    const itens = (n) => `${n} ${n === 1 ? 'item' : 'itens'}`;
+    const hist = (os.conferencias || []).slice().reverse();
+    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais corrigidos' };
+    return `
+      <section class="panel" id="d-conf"><div class="panel__head"><h3>${VG.icon('check')}Conferência da OS</h3>${VG.badge(st)}</div>
+        <div class="panel__body conf-box">
+          <div class="conf-row"><span>OS nº / Cliente nº</span><b>${os.numero} · ${VG.esc(codCliente(os) || '—')}</b></div>
+          <div class="conf-row"><span>Tipo de OS</span><b>${VG.esc(os.tipo || '—')}</b></div>
+          <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
+          <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
+          <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
+          ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}
+          ${st === 'reaberta' ? `<div class="notice">${VG.icon('refresh')}<div><strong>OS reaberta</strong> em ${VG.fmtDateTime(os.reabertaEm)}${os.reabertaPor ? ' por ' + VG.esc(os.reabertaPor) : ''}${os.reabertaMotivo ? '. Motivo: ' + VG.esc(os.reabertaMotivo) : ''}. Faça as correções e marque como processada novamente.</div></div>` : ''}
+          ${st === 'aguardando_cliente' ? '<p class="hint" style="margin:0">A conferência fica disponível depois que o cliente assinar a OS.</p>' : ''}
+          ${st === 'concluida' ? '<p class="hint" style="margin:0">Confira os materiais separados e os utilizados antes de processar.</p>' : ''}
+          <div class="conf-actions stack">
+            ${st === 'reaberta' ? `<button class="btn" id="d-corrigir">${VG.icon('box')}<span>Corrigir materiais utilizados</span></button>
+              <a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Corrigir dados da OS</span></a>` : ''}
+            ${PODE_PROCESSAR.includes(st) ? `<button class="btn btn-primary" id="d-processar">${VG.icon('check')}<span>Marcar como processada</span></button>` : ''}
+            ${st === 'processada' ? `<button class="btn" id="d-reabrir">${VG.icon('refresh')}<span>Reabrir OS</span></button>` : ''}
+          </div>
+          ${hist.length ? `<ul class="conf-hist">${hist.map((h) => `<li><time>${VG.fmtDateTime(h.dataHora)}</time>${VG.esc(acao[h.acao] || h.acao)}${h.por ? ' por ' + VG.esc(h.por) : ''}${h.motivo ? ' — ' + VG.esc(h.motivo) : ''}</li>`).join('')}</ul>` : ''}
+        </div></section>`;
+  }
+
+  function bindConferencia(el, id) {
+    const again = () => renderDetail(el, id);
+    const P = VG.$('#d-processar', el);
+    if (P) P.onclick = async () => {
+      const os = S().get('ordens', id);
+      if (!(await VG.confirm(`Confirma que conferiu a OS #${os.numero}? Ela será marcada como PROCESSADA e o fluxo desta OS será finalizado.`, { title: 'Marcar como processada', ok: 'Marcar como processada' }))) return;
+      VG.setBusy(P, true, 'Processando…');
+      try {
+        const salva = await S().processarOS(id);
+        VG.toast(`OS #${salva.numero} marcada como PROCESSADA.`, 'success');
+        again();
+      } catch (e) { VG.setBusy(P, false); VG.toast('Não foi possível processar a OS: ' + e.message, 'error', 7000); }
+    };
+    const R = VG.$('#d-reabrir', el);
+    if (R) R.onclick = async () => {
+      const os = S().get('ordens', id);
+      const motivo = await VG.promptText({ title: `Reabrir OS #${os.numero}`, label: 'Motivo da reabertura', placeholder: 'Ex.: quantidade de material informada errada', ok: 'Reabrir OS' });
+      if (motivo == null) return;
+      VG.setBusy(R, true, 'Reabrindo…');
+      try {
+        const salva = await S().reabrirOS(id, motivo);
+        VG.toast(`OS #${salva.numero} reaberta. Corrija o necessário e processe novamente.`, 'success', 5000);
+        again();
+      } catch (e) { VG.setBusy(R, false); VG.toast('Não foi possível reabrir a OS: ' + e.message, 'error', 7000); }
+    };
+    const C = VG.$('#d-corrigir', el);
+    if (C) C.onclick = () => corrigirMateriais(id, again);
+  }
+
+  /** Correção dos materiais utilizados numa OS reaberta (feita pela supervisão) */
+  function corrigirMateriais(id, done) {
+    const os = S().get('ordens', id);
+    const a = os.atendimento || {};
+    const estado = { usou: VG.Mat.usou(os), itens: (a.materiais || []).map((m) => Object.assign({}, m)) };
+    VG.modal({
+      title: `Materiais utilizados — OS #${os.numero}`, size: 'lg',
+      body: `
+        <div class="mat-q"><span class="label">Utilizou algum material?</span>
+          <div class="seg">
+            <input type="radio" name="cm-usou" id="cm-sim" value="sim" ${estado.usou === true ? 'checked' : ''}><label for="cm-sim">SIM</label>
+            <input type="radio" name="cm-usou" id="cm-nao" value="nao" ${estado.usou === false ? 'checked' : ''}><label for="cm-nao">NÃO</label>
+          </div></div>
+        <div id="cm-nao-box" class="notice notice--info ${estado.usou === false ? '' : 'hidden'}">${VG.icon('info')}<div>Não foi utilizado material.</div></div>
+        <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}</div>`,
+      onOpen: (m) => {
+        VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [] });
+        VG.$$('input[name=cm-usou]', m).forEach((r) => (r.onchange = () => {
+          estado.usou = r.value === 'sim';
+          VG.$('#cm-ed', m).classList.toggle('hidden', !estado.usou);
+          VG.$('#cm-nao-box', m).classList.toggle('hidden', estado.usou);
+        }));
+      },
+      actions: [
+        { label: 'Voltar' },
+        { label: 'Salvar correção', cls: 'btn-primary', icon: 'check', onClick: async () => {
+          if (estado.usou !== true && estado.usou !== false) { VG.toast('Informe se foi utilizado algum material.', 'warn'); return false; }
+          if (estado.usou && !estado.itens.length) { VG.toast('Adicione os materiais utilizados ou marque NÃO.', 'warn'); return false; }
+          try {
+            await S().corrigirMateriais(id, { usouMaterial: estado.usou, materiais: estado.usou ? estado.itens : [] });
+            VG.toast('Materiais utilizados corrigidos.', 'success');
+            done && done();
+          } catch (e) { VG.toast('Não foi possível salvar a correção: ' + e.message, 'error', 7000); return false; }
+        } },
+      ],
+    });
   }
 
   /* ---------- ESCOLHER TÉCNICO NA OS ---------- */
@@ -603,12 +763,12 @@
     const andamento = minhas.filter((o) => o.status === 'em_atendimento').sort(porUrgencia);
     const fazer = minhas.filter((o) => o.status === 'aguardando_tecnico' || o.status === 'aberta').sort(porUrgencia);
     const assinatura = minhas.filter((o) => o.status === 'aguardando_cliente').sort(porUrgencia);
-    const feitas = minhas.filter((o) => o.status === 'concluida').sort((a, b) => b.numero - a.numero).slice(0, 10);
+    const feitas = minhas.filter((o) => VG.isConcluida(o.status)).sort((a, b) => b.numero - a.numero).slice(0, 10);
     const P = VG.PRIORIDADES;
 
     const card = (o) => {
-      const atrasada = o.prazoData && o.status !== 'concluida' && new Date(`${o.prazoData}T${o.prazoHora || '23:59'}`) < new Date();
-      const acao = { aguardando_tecnico: 'Abrir e iniciar', aberta: 'Abrir e iniciar', em_atendimento: 'Continuar atendimento', aguardando_cliente: 'Coletar assinatura', concluida: 'Ver OS' }[o.status];
+      const atrasada = o.prazoData && !VG.isConcluida(o.status) && new Date(`${o.prazoData}T${o.prazoHora || '23:59'}`) < new Date();
+      const acao = { aguardando_tecnico: 'Abrir e iniciar', aberta: 'Abrir e iniciar', em_atendimento: 'Continuar atendimento', aguardando_cliente: 'Coletar assinatura', concluida: 'Ver OS', processada: 'Ver OS', reaberta: 'Ver OS' }[o.status];
       return `
       <a class="panel os-card os-card--${o.prioridade}" href="#/atendimento/${o.id}">
         <div class="os-card__top">

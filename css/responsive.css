@@ -85,3 +85,14 @@
   .stat__value { font-size: 1.5rem; }
   .login__card { padding: 2rem 1.3rem 1.5rem; }
 }
+
+/* Materiais com código (formulário da OS e atendimento do técnico) */
+@media (max-width: 720px) {
+  .mat-add.mat-add--cod { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .mat-add.mat-add--cod .field:nth-child(1),
+  .mat-add.mat-add--cod .field:nth-child(2) { grid-column: 1 / -1; }
+  .mat-add.mat-add--cod .field:nth-child(3),
+  .mat-add.mat-add--cod .field:nth-child(4) { grid-column: auto; }
+  .mat-chip { flex: 1 1 100%; }
+  .conf-actions .btn { width: 100%; }
+}

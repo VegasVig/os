@@ -26,7 +26,7 @@ const CFG = {
   MAX_TENTATIVAS: 5,
   BLOQUEIO_SEG: 60,
   MAX_ATIVIDADES: 300,
-  VERSAO_BANCO: '2',
+  VERSAO_BANCO: '3',        // 3 = cria o usuário Supervisao Estoque na primeira execução
 };
 
 const TABELAS = {
@@ -47,7 +47,15 @@ const PAPEIS_SUP = ['supervisora'];
 const SUPERVISORAS = [
   { usuario: 'luzia', nome: 'Luzia', senha: 'Vegas4747@' },
   { usuario: 'talita', nome: 'Talita', senha: 'Vegas4747!' },
+  // Supervisão de estoque: vê todas as OS para conferir materiais separados e utilizados.
+  // Não importa backup nem apaga dados (isso continua só com a supervisão geral).
+  { usuario: 'Supervisao Estoque', nome: 'Supervisão Estoque', senha: 'Vegas4747', verTodas: true, estoque: true },
 ];
+
+/** OS já assinadas pelo cliente (conferidas ou não pela supervisão) */
+const CONCLUIDAS_ = ['concluida', 'processada', 'reaberta'];
+/** Campos da conferência: só mudam pelas ações processarOS / reabrirOS / corrigirMateriais */
+const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias'];
 
 /* =========================================================================
    PÁGINA
@@ -93,6 +101,7 @@ function instalar() {
   Logger.log('Pasta de arquivos (Drive): ' + info.pasta);
   Logger.log('Supervisão geral (vê todas as OS): supervisora · senha: ' + CFG.SENHA_INICIAL);
   Logger.log('Supervisoras: luzia · Vegas4747@   |   talita · Vegas4747!   (cada uma vê só as OS que abriu)');
+  Logger.log('Supervisão de estoque: Supervisao Estoque · Vegas4747   (vê todas as OS para conferir materiais)');
   return info;
 }
 
@@ -139,7 +148,9 @@ const ACOES = {
     const s = {
       token: tok_(48), userId: u.id, usuario: u.usuario, nome: u.nome, papel: u.papel,
       tecnicoId: u.tecnicoId || null, criadaEm: agora_(), geracao: props_().getProperty('SESS_GEN') || '0',
-      verTodas: u.papel === 'supervisora' && verTodas_(u),
+      // verTodas na sessão libera as funções da supervisão geral (importar backup / apagar dados)
+      verTodas: u.papel === 'supervisora' && verTodas_(u) && !u.estoque,
+      estoque: u.papel === 'supervisora' && !!u.estoque,
     };
     cache.put('s_' + s.token, JSON.stringify(s), CFG.SESSAO_SEG);
     comLock_(() => { u.ultimoAcesso = agora_(); upsert_('users', u); });
@@ -232,7 +243,7 @@ const ACOES = {
         upsert_('ordens', obj);
         logTransicao_(obj, antes);
         bump_();
-        return obj;
+        return semValores_(obj);
       }
       if (col === 'config') throw new Error('Use a tela de Configurações.');
       if (col === 'users') {
@@ -328,6 +339,7 @@ const ACOES = {
       os.criadaEm = os.criadaEm || agora_();
       os.criadaPor = s.nome;
       os.criadaPorId = s.userId;
+      os.materiaisLevar = limparMats_(os.materiaisLevar);
       os.atualizadoEm = agora_();
       upsert_('ordens', extrairImagens_(os, 'OS_' + os.numero));
       cfg.ultimoNumeroOS = os.numero;
@@ -354,6 +366,7 @@ const ACOES = {
         os.criadaEm = os.criadaEm || agora_();
         os.criadaPor = s.nome;
         os.criadaPorId = s.userId;
+        os.materiaisLevar = limparMats_(os.materiaisLevar);
         os.atualizadoEm = agora_();
         return os;
       });
@@ -423,10 +436,77 @@ const ACOES = {
     });
   },
 
+  /* ---------- Conferência da supervisão ---------- */
+  /** Supervisor conferiu a OS realizada: marca como PROCESSADA (fim do fluxo) */
+  processarOS(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    return comLock_(() => {
+      const os = osDaSupervisao_(s, req.id);
+      if (os.status === 'processada') throw new Error('Esta OS já está processada.');
+      if (['concluida', 'reaberta'].indexOf(os.status) < 0) throw new Error('Só é possível processar uma OS realizada (finalizada pelo técnico e assinada pelo cliente).');
+      const agora = agora_();
+      os.status = 'processada';
+      os.processadaEm = agora;
+      os.processadaPor = s.nome;
+      os.processadaPorId = s.userId;
+      conferencia_(os, 'processada', s, '');
+      hist_(os, 'OS conferida pela supervisão e marcada como PROCESSADA.', s.nome);
+      os.atualizadoEm = agora;
+      upsert_('ordens', os);
+      registrarAtividade_('OS #' + os.numero + ' processada por ' + String(s.nome || '').split(' ')[0], os.id, 'check');
+      bump_();
+      return os;
+    });
+  },
+
+  /** Volta a OS processada para conferência/correção (nada é apagado) */
+  reabrirOS(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    const motivo = String(req.motivo || '').trim().slice(0, 500);
+    if (!motivo) throw new Error('Informe o motivo da reabertura.');
+    return comLock_(() => {
+      const os = osDaSupervisao_(s, req.id);
+      if (os.status !== 'processada') throw new Error('Só é possível reabrir uma OS processada.');
+      const agora = agora_();
+      os.status = 'reaberta';
+      os.reabertaEm = agora;
+      os.reabertaPor = s.nome;
+      os.reabertaMotivo = motivo;
+      conferencia_(os, 'reaberta', s, motivo);
+      hist_(os, 'OS reaberta pela supervisão. Motivo: ' + motivo, s.nome);
+      os.atualizadoEm = agora;
+      upsert_('ordens', os);
+      registrarAtividade_('OS #' + os.numero + ' reaberta', os.id, 'refresh');
+      bump_();
+      return os;
+    });
+  },
+
+  /** OS reaberta: a supervisão corrige o "utilizou material" e os materiais utilizados */
+  corrigirMateriais(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    if (req.usouMaterial !== true && req.usouMaterial !== false) throw new Error('Informe se foi utilizado algum material.');
+    return comLock_(() => {
+      const os = osDaSupervisao_(s, req.id);
+      if (os.status !== 'reaberta') throw new Error('Reabra a OS antes de corrigir os materiais.');
+      const at = os.atendimento || (os.atendimento = {});
+      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais) : [];
+      if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
+      at.usouMaterial = req.usouMaterial;
+      at.materiais = mats;
+      conferencia_(os, 'correcao', s, '');
+      hist_(os, req.usouMaterial ? 'Supervisão corrigiu os materiais utilizados: ' + resumoMats_(mats) + '.' : 'Supervisão corrigiu: não foi utilizado material.', s.nome);
+      os.atualizadoEm = agora_();
+      upsert_('ordens', os);
+      bump_();
+      return os;
+    });
+  },
+
   /* ---------- Links exclusivos (sem login) ---------- */
   resolveLink(req) {
     const r = resolverLink_(req.numero, req.t);
-    const os = JSON.parse(JSON.stringify(r.os));
+    const os = semValores_(r.os);
     if (r.papel === 'cliente') os.tokenTecnico = '';
     return { os: os, papel: r.papel, config: publicoConfig_(config_(), false) };
   },
@@ -442,7 +522,7 @@ const ACOES = {
       upsert_('ordens', obj);
       logTransicao_(obj, antes);
       bump_();
-      const out = JSON.parse(JSON.stringify(obj));
+      const out = semValores_(obj);
       if (r.papel === 'cliente') out.tokenTecnico = '';
       return out;
     });
@@ -487,7 +567,19 @@ function mesclarLink_(atual, novo, papel) {
     if (novo.status === 'aguardando_cliente' && !(novo.assinaturaTecnico && novo.assinaturaTecnico.imagem)) {
       throw new Error('A assinatura do técnico é obrigatória para finalizar.');
     }
-    if (novo.atendimento) atual.atendimento = novo.atendimento;
+    if (novo.atendimento) {
+      // o técnico informa só código, material e quantidade; valores nunca vêm dele
+      const at = novo.atendimento;
+      at.materiais = limparMats_(at.materiais, (atual.atendimento && atual.atendimento.materiais) || []);
+      if (at.usouMaterial !== true && at.usouMaterial !== false) delete at.usouMaterial;
+      if (at.usouMaterial === false) at.materiais = [];
+      atual.atendimento = at;
+    }
+    if (novo.status === 'aguardando_cliente') {
+      const at = atual.atendimento || {};
+      if (at.usouMaterial !== true && at.usouMaterial !== false) throw new Error('Informe se utilizou algum material (SIM ou NÃO). Se a pergunta não aparecer, atualize a página.');
+      if (at.usouMaterial === true && !(at.materiais || []).length) throw new Error('Informe quais materiais foram utilizados e a quantidade.');
+    }
     if (novo.assinaturaTecnico) atual.assinaturaTecnico = novo.assinaturaTecnico;
     atual.status = novo.status;
   } else if (papel === 'cliente') {
@@ -520,7 +612,11 @@ function mesclarSupervisao_(atual, novo) {
   ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'tokenCliente', 'criadaEm', 'numero', 'criadaPorId', 'criadaPor'].forEach((k) => {
     if (atual[k] !== undefined) novo[k] = atual[k];
   });
-  if (atual.status === 'concluida' || atual.status === 'cancelada') novo.status = atual.status;
+  // conferência (processada/reaberta): só muda pelas ações próprias
+  CAMPOS_CONF_.forEach((k) => { if (atual[k] !== undefined) novo[k] = atual[k]; else delete novo[k]; });
+  novo.materiaisLevar = limparMats_(novo.materiaisLevar);
+  if (CONCLUIDAS_.indexOf(atual.status) >= 0 || atual.status === 'cancelada') novo.status = atual.status;
+  else if (CONCLUIDAS_.indexOf(novo.status) >= 0 && novo.status !== 'concluida') novo.status = atual.status;
   else if (novo.status !== 'cancelada' && (ordem[novo.status] || 0) < (ordem[atual.status] || 0)) novo.status = atual.status;
   // histórico: une as duas versões sem duplicar
   const visto = {};
@@ -544,6 +640,59 @@ function logTransicao_(os, antes) {
   }
 }
 
+/* ---------- Materiais e conferência ---------- */
+
+/**
+ * Lista de materiais limpa: só identificação e quantidade.
+ * `antigos`: itens já gravados — um valor interno existente (versão anterior do
+ * sistema) é mantido no banco pelo id do item, mas nunca é aceito do navegador.
+ */
+function limparMats_(lista, antigos) {
+  const ant = {};
+  (antigos || []).forEach((m) => { if (m && m.id) ant[m.id] = m; });
+  return (Array.isArray(lista) ? lista : []).slice(0, 200).map((m) => {
+    m = m || {};
+    const q = Number(String(m.quantidade == null ? '' : m.quantidade).replace(',', '.'));
+    const out = {
+      id: String(m.id || tok_(10).toLowerCase()).slice(0, 40),
+      codigo: String(m.codigo || '').trim().slice(0, 60),
+      descricao: String(m.descricao || '').trim().slice(0, 200),
+      quantidade: isFinite(q) && q > 0 ? Math.round(q * 1000) / 1000 : 0,
+      unidade: String(m.unidade || '').trim().slice(0, 30),
+    };
+    if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
+    return out;
+  }).filter((m) => m.descricao && m.quantidade > 0);
+}
+
+/** Cópia da OS sem qualquer valor de material (técnico e cliente) */
+function semValores_(os) {
+  const c = JSON.parse(JSON.stringify(os));
+  if (c.atendimento && Array.isArray(c.atendimento.materiais)) c.atendimento.materiais.forEach((m) => { if (m) delete m.valor; });
+  if (Array.isArray(c.materiaisLevar)) c.materiaisLevar.forEach((m) => { if (m) delete m.valor; });
+  return c;
+}
+
+function resumoMats_(mats) {
+  return (mats || []).map((m) => (m.codigo ? m.codigo + ' ' : '') + m.descricao + ' (' + m.quantidade + (m.unidade ? ' ' + m.unidade : '') + ')').join('; ');
+}
+
+/** OS que esta supervisora pode conferir */
+function osDaSupervisao_(s, id) {
+  const os = ler_('ordens').find((o) => o.id === String(id || ''));
+  if (!os) throw new Error('OS não encontrada.');
+  if (!podeVerOS_(s, os)) throw new Error('Esta OS foi aberta por outra supervisora.');
+  return os;
+}
+
+function conferencia_(os, acao, s, motivo) {
+  os.conferencias = (os.conferencias || []).concat([{ acao: acao, dataHora: agora_(), por: s.nome, porId: s.userId, motivo: motivo || '' }]).slice(-50);
+}
+
+function hist_(os, texto, autor) {
+  os.historico = (os.historico || []).concat([{ dataHora: agora_(), texto: texto, autor: autor || '' }]);
+}
+
 function resolverLink_(numero, token) {
   numero = String(numero || '').replace(/\D/g, '');
   token = String(token || '');
@@ -554,7 +703,7 @@ function resolverLink_(numero, token) {
   else if (token === os.tokenCliente) papel = 'cliente';
   if (!papel) throw new Error('Este link não é mais válido. Peça um novo link à supervisão.');
   const dias = Number(config_().validadeLinkDias) || 0;
-  if (dias > 0 && os.status !== 'concluida' && Date.now() > new Date(os.criadaEm).getTime() + dias * 86400000) {
+  if (dias > 0 && CONCLUIDAS_.indexOf(os.status) < 0 && Date.now() > new Date(os.criadaEm).getTime() + dias * 86400000) {
     throw new Error('Este link expirou. Peça um novo link à supervisão.');
   }
   return { os: os, papel: papel };
@@ -574,7 +723,7 @@ function snapshot_(s) {
     out.config = publicoConfig_(cfg, true);
   } else {
     out.tecnicos = ler_('tecnicos').filter((t) => t.id === s.tecnicoId);
-    out.ordens = ler_('ordens').filter((o) => o.tecnicoId === s.tecnicoId);
+    out.ordens = ler_('ordens').filter((o) => o.tecnicoId === s.tecnicoId).map(semValores_);
     out.config = publicoConfig_(cfg, false);
   }
   return out;
@@ -665,19 +814,22 @@ function podeVerOS_(s, os) {
 }
 
 function exigirGeral_(s) {
-  if (!verTodas_(ler_('users').find((x) => x.id === s.userId))) throw new Error('Somente a supervisão geral pode fazer isso.');
+  const u = ler_('users').find((x) => x.id === s.userId);
+  if (!verTodas_(u) || (u && u.estoque)) throw new Error('Somente a supervisão geral pode fazer isso.');
 }
 
-/** Cria Luzia e Talita se ainda não existirem (não mexe em senha já trocada) */
+/** Cria Luzia, Talita e a Supervisão Estoque se ainda não existirem (não mexe em senha já trocada) */
 function garantirSupervisoras_() {
   const users = ler_('users');
   SUPERVISORAS.forEach((x) => {
-    if (users.some((u) => norm_(u.usuario) === x.usuario)) return;
+    if (users.some((u) => norm_(u.usuario) === norm_(x.usuario))) return;
     const salt = tok_(16);
-    upsert_('users', {
-      id: tok_(16).toLowerCase(), usuario: x.usuario, nome: x.nome, papel: 'supervisora', ativo: true, verTodas: false,
+    const u = {
+      id: tok_(16).toLowerCase(), usuario: x.usuario, nome: x.nome, papel: 'supervisora', ativo: true, verTodas: x.verTodas === true,
       salt: salt, senhaHash: hash_(x.senha, salt), criadoEm: agora_(),
-    });
+    };
+    if (x.estoque) u.estoque = true;
+    upsert_('users', u);
   });
 }
 

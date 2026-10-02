@@ -106,7 +106,7 @@
     const clientes = S().list('clientes').filter((c) => c.status !== 'inativo');
     const tecnicos = S().list('tecnicos').filter((t) => t.ativo !== false);
     // OS em andamento: evita criar de novo a mesma OS (mesmo cliente + mesmo problema)
-    const abertas = new Set(S().list('ordens').filter((o) => !['concluida', 'cancelada'].includes(o.status)).map((o) => o.clienteId + '|' + chaveTexto(o.problema)));
+    const abertas = new Set(S().list('ordens').filter((o) => !VG.ENCERRADAS.includes(o.status)).map((o) => o.clienteId + '|' + chaveTexto(o.problema)));
 
     const registros = rows.slice(1).map((r, i) => {
       const d = {};
@@ -150,10 +150,11 @@
     const c = r.cliente, t = r.tecnico;
     const cliente = {};
     ['nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep'].forEach((k) => (cliente[k] = c[k] || ''));
+    cliente.codigo = c.codigo || '';
     const os = Object.assign({
       numero: 0, criadaEm: VG.nowISO(), criadaPor: autor,
       status: t ? 'aguardando_tecnico' : 'aberta',
-      clienteId: c.id, cliente,
+      clienteId: c.id, cliente, materiaisLevar: [],
       tecnicoId: t ? t.id : null, tecnicoNome: t ? t.nome : '',
       tokenTecnico: '', tokenCliente: '',
       atendimento: { inicio: null, fim: null, diagnostico: '', servico: '', materiais: [], observacoes: '', fotos: { antes: [], depois: [] } },

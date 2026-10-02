@@ -15,6 +15,7 @@
   const STATUS_RGB = {
     aberta: [77, 141, 255], aguardando_tecnico: [210, 160, 20], em_atendimento: [240, 125, 50],
     aguardando_cliente: [140, 95, 230], concluida: [34, 160, 95], cancelada: [220, 70, 70],
+    processada: [31, 181, 163], reaberta: [235, 90, 150],
   };
 
   /* ----- imagens ----- */
@@ -149,41 +150,30 @@
     section('Diagnóstico'); paragraph(a.diagnostico);
     section('Serviço executado'); paragraph(a.servico);
 
+    // Materiais: somente código, material e quantidade (a OS não mostra valores)
     section('Materiais utilizados');
     const mats = a.materiais || [];
-    if (!mats.length) paragraph('Nenhum material registrado.');
+    const usou = VG.Mat.usou(os);
+    setText(9.2, 'bold', COR.texto); ensure(6);
+    doc.text(safe(`Utilizou material: ${usou === true ? 'SIM' : usou === false ? 'NÃO' : 'não informado'}`), M, y); y += 6;
+    if (!mats.length) paragraph(usou === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.');
     else {
       ensure(8);
       doc.setFillColor(...COR.grafite); doc.rect(M, y - 4.5, CW, 6.5, 'F');
-      const tot = VG.matsTotal(mats);
-      const comValor = tot != null;
-      // colunas (da direita para a esquerda): Total, Valor unit., Quantidade
-      const xTot = W - M - 3, xUni = W - M - 33, xQtd = comValor ? W - M - 65 : W - M - 3;
-      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Material', M + 16, y); doc.text('Quantidade', xQtd, y, { align: 'right' });
-      if (comValor) { doc.text('Valor unit.', xUni, y, { align: 'right' }); doc.text('Total', xTot, y, { align: 'right' }); }
+      const xQtd = W - M - 3;
+      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Código', M + 14, y); doc.text('Material', M + 46, y); doc.text('Quantidade', xQtd, y, { align: 'right' });
       y += 5;
       mats.forEach((m, i) => {
-        const ln = doc.splitTextToSize(safe(m.descricao), comValor ? CW - 110 : CW - 60);
-        const h = ln.length * 4.4 + 2.4;
+        const ln = doc.splitTextToSize(safe(m.descricao), CW - 90);
+        const cod = doc.splitTextToSize(safe(m.codigo || '-'), 30);
+        const h = Math.max(ln.length, cod.length) * 4.4 + 2.4;
         ensure(h + 1);
         if (i % 2 === 0) { doc.setFillColor(245, 246, 248); doc.rect(M, y - 3.8, CW, h, 'F'); }
         setText(8.8, 'normal', COR.texto);
-        doc.text(String(i + 1).padStart(2, '0'), M + 3, y); doc.text(ln, M + 16, y);
+        doc.text(String(i + 1).padStart(2, '0'), M + 3, y); doc.text(cod, M + 14, y); doc.text(ln, M + 46, y);
         doc.text(safe(`${m.quantidade} ${m.unidade || ''}`), xQtd, y, { align: 'right' });
-        if (comValor) {
-          doc.text(safe(m.valor != null ? VG.fmtMoney(m.valor) : '-'), xUni, y, { align: 'right' });
-          doc.text(safe(m.valor != null ? VG.fmtMoney(VG.matTotal(m)) : '-'), xTot, y, { align: 'right' });
-        }
         y += h;
       });
-      if (comValor) {
-        ensure(8);
-        doc.setDrawColor(200, 204, 210); doc.line(M, y - 3.2, W - M, y - 3.2);
-        setText(9, 'bold', COR.texto);
-        doc.text('Total dos materiais', xUni, y + 1, { align: 'right' });
-        doc.text(safe(VG.fmtMoney(tot)), xTot, y + 1, { align: 'right' });
-        y += 6;
-      }
       y += 3;
     }
 
@@ -297,7 +287,7 @@
         ${sec('Problema relatado')}<p style="font-size:12px;white-space:pre-wrap">${esc(os.problema)}</p>
         ${sec('Diagnóstico')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.diagnostico || '—')}</p>
         ${sec('Serviço executado')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.servico || '—')}</p>
-        ${sec('Materiais utilizados')}${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse">${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td>${VG.matsTotal(a.materiais) != null ? `<td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.valor != null ? VG.fmtMoney(m.valor) : '—')}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.valor != null ? VG.fmtMoney(VG.matTotal(m)) : '—')}</td>` : ''}</tr>`).join('')}${VG.matsTotal(a.materiais) != null ? `<tr><td colspan="3" style="padding:6px 4px;text-align:right"><b>Total dos materiais</b></td><td style="padding:6px 4px;text-align:right"><b>${esc(VG.fmtMoney(VG.matsTotal(a.materiais)))}</b></td></tr>` : ''}</table>` : '<p style="font-size:12px">Nenhum material registrado.</p>'}
+        ${sec('Materiais utilizados')}<p style="font-size:12px;margin:0 0 6px"><b>Utilizou material: ${esc(VG.Mat.usouTexto(os))}</b></p>${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Código</th><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Material</th><th style="text-align:right;padding:4px;border-bottom:1px solid #999">Quantidade</th></tr>${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.codigo || '—')}</td><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td></tr>`).join('')}</table>` : `<p style="font-size:12px">${VG.Mat.usou(os) === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.'}</p>`}
         ${sec('Observações')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.observacoes || '—')}</p>
         ${fotos.length ? sec('Fotos') + `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map(([l, f]) => `<div><img src="${f}" style="width:170px;height:128px;object-fit:cover;border:1px solid #ccc"><div style="font-size:9px;color:#666">${l}</div></div>`).join('')}</div>` : ''}
         ${sec('Assinaturas')}<table style="width:100%;border-collapse:collapse"><tr>${sig('Técnico responsável', os.assinaturaTecnico)}${sig('Cliente', os.assinaturaCliente)}</tr></table>

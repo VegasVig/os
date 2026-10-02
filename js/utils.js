@@ -118,14 +118,21 @@
     aguardando_cliente:  { label: 'Aguardando cliente',  emoji: '🟣', color: 'purple', cssVar: '--st-purple' },
     concluida:           { label: 'Concluída',           emoji: '🟢', color: 'green',  cssVar: '--st-green' },
     cancelada:           { label: 'Cancelada',           emoji: '🔴', color: 'red',    cssVar: '--st-red' },
+    processada:          { label: 'Processada',          emoji: '✅', color: 'teal',   cssVar: '--st-teal' },
+    reaberta:            { label: 'Reaberta',            emoji: '🔁', color: 'pink',   cssVar: '--st-pink' },
   };
+  /** OS já realizadas (assinadas pelo cliente), conferidas ou não pela supervisão */
+  VG.CONCLUIDAS = ['concluida', 'processada', 'reaberta'];
+  VG.isConcluida = (st) => VG.CONCLUIDAS.includes(st);
+  /** Encerradas: não contam como pendentes */
+  VG.ENCERRADAS = ['concluida', 'processada', 'reaberta', 'cancelada'];
   VG.PRIORIDADES = {
     baixa:   { label: 'Baixa',   color: 'gray' },
     normal:  { label: 'Normal',  color: 'silver' },
     alta:    { label: 'Alta',    color: 'orange' },
     urgente: { label: 'Urgente', color: 'red' },
   };
-  VG.TIPOS_ATENDIMENTO = ['Manutenção', 'Instalação', 'Suporte', 'Preventiva', 'Corretiva', 'Vistoria', 'Outro'];
+  VG.TIPOS_ATENDIMENTO = ['Manutenção', 'Instalação', 'Suporte', 'Preventiva', 'Corretiva', 'Vistoria', 'Venda', 'Outro'];
   VG.EQUIPAMENTOS = ['Câmera', 'DVR/NVR', 'Alarme', 'Central de alarme', 'Controle de acesso', 'Cerca elétrica', 'Interfone', 'Portão eletrônico', 'PABX', 'Rede', 'Outro'];
   /** Valor em reais: 1234.5 → R$ 1.234,50 */
   VG.fmtMoney = (v) => (v == null || v === '' || isNaN(v) ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));

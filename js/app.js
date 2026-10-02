@@ -310,7 +310,7 @@
       const pend = ordens.filter((o) => o.tecnicoId === sess.tecnicoId && ['aguardando_tecnico', 'em_atendimento', 'aberta'].includes(o.status)).length;
       return `<div class="nav__group">Atendimentos</div>${item('minhas', '#/minhas-os', 'wrench', 'Minhas OS', pend)}`;
     }
-    const ativas = ordens.filter((o) => !['concluida', 'cancelada'].includes(o.status)).length;
+    const ativas = ordens.filter((o) => !VG.ENCERRADAS.includes(o.status)).length;
     return `
       <div class="nav__group">Operação</div>
       ${item('dashboard', '#/dashboard', 'grid', 'Dashboard')}
@@ -412,7 +412,7 @@
       const antes = new Set(VG.Store.list('ordens').map((o) => o.id));
       await VG.Auth.restore();
       if (sess.papel === 'tecnico') {
-        const novas = VG.Store.list('ordens').filter((o) => !antes.has(o.id) && o.tecnicoId === sess.tecnicoId && o.status !== 'concluida');
+        const novas = VG.Store.list('ordens').filter((o) => !antes.has(o.id) && o.tecnicoId === sess.tecnicoId && !VG.isConcluida(o.status));
         if (novas.length) {
           const urg = novas.some((o) => o.prioridade === 'urgente');
           VG.toast(novas.length === 1 ? `Nova OS #${novas[0].numero}${urg ? ' — URGENTE' : ''}: ${novas[0].cliente.nome}` : `${novas.length} novas OS recebidas${urg ? ' (há urgente)' : ''}.`, urg ? 'warn' : 'info', 8000);

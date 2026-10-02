@@ -23,6 +23,8 @@
   --st-green: #2fbf71;
   --st-red: #ff5b5b;
   --st-gray: #8b9199;
+  --st-teal: #1fb5a3;   /* OS processada (conferida pela supervisão) */
+  --st-pink: #ff6fae;   /* OS reaberta */
 }
 
 /* ---------- DARK ---------- */

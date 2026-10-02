@@ -20,6 +20,8 @@
     logoDataUrl: '',
   };
   const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades'];
+  /** Campos da conferência da supervisão: sempre valem os do servidor */
+  const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias'];
 
   let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], config: {}, rev: 0 };
   let publico = null; // { numero, t } quando a tela foi aberta por link exclusivo
@@ -126,7 +128,7 @@
         // supervisora: recebe a versão mesclada (atendimento feito em campo prevalece)
         const sess = VG.Auth.current();
         if (salvo && col === 'ordens' && !publico && sess && sess.papel === 'supervisora') {
-          ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'status', 'historico'].forEach((c) => { if (salvo[c] !== undefined) f.obj[c] = salvo[c]; });
+          ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'status', 'historico'].concat(CONFERENCIA).forEach((c) => { if (salvo[c] !== undefined) f.obj[c] = salvo[c]; });
         }
         if (salvo && salvo.atualizadoEm) f.obj.atualizadoEm = salvo.atualizadoEm;
         return salvo;
@@ -249,6 +251,25 @@
       mem.config.ultimoNumeroOS = salva.numero;
       return salva;
     },
+    /* ---------- conferência da supervisão (processar / reabrir / corrigir) ---------- */
+    async acaoOS(action, id, extra) {
+      await this.flush(id).catch(() => {}); // envia antes qualquer alteração pendente desta OS
+      pendentes++; atualizarIndicador();
+      try {
+        const salva = await call(action, Object.assign({ id }, extra || {}));
+        this.put('ordens', salva);
+        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, corrigirMateriais: `Materiais da OS #${salva.numero} corrigidos` }[action];
+        if (txt) { mem.atividades.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto: txt, osId: id, icon: 'check' }); mem.atividades = mem.atividades.slice(0, 150); }
+        return salva;
+      } catch (e) {
+        if (/a[çc][ãa]o desconhecida/i.test(e.message)) throw new Error('o servidor ainda está na versão antiga. Cole o Code.gs novo no Apps Script e publique uma nova versão da implantação.');
+        throw e;
+      } finally { pendentes--; atualizarIndicador(); }
+    },
+    processarOS(id) { return this.acaoOS('processarOS', id); },
+    reabrirOS(id, motivo) { return this.acaoOS('reabrirOS', id, { motivo }); },
+    corrigirMateriais(id, dados) { return this.acaoOS('corrigirMateriais', id, dados); },
+
     hist(os, texto, autor) {
       os.historico = os.historico || [];
       os.historico.push({ dataHora: VG.nowISO(), texto, autor: autor || '' });
