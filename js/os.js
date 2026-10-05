@@ -51,9 +51,25 @@
     return d.length >= 3 && VG.digits(o.cliente && o.cliente.cpf_cnpj).includes(d);
   }
 
+  /** Data de conclusão mostrada nas abas Realizadas/Canceladas */
+  const fimDe = (o) => (o.atendimento && o.atendimento.fim) || o.canceladaEm || o.atualizadoEm || o.criadaEm;
+  /**
+   * Data usada no filtro De/Até = a mesma data que aparece na lista:
+   * A realizar → data prevista (ou abertura, se não tiver); Realizadas/Canceladas → data em que foi realizada.
+   * Comparada como dia local (AAAA-MM-DD), sem problema de fuso.
+   */
+  const diaFiltro = (o) => {
+    if (grupoStatus(o) === 'realizar') return o.prazoData || (o.criadaEm ? VG.toInputDate(new Date(o.criadaEm)) : '');
+    const d = new Date(fimDe(o));
+    return isNaN(d) ? '' : VG.toInputDate(d);
+  };
+  const passaData = (o, de, ate) => {
+    if (!de && !ate) return true;
+    const dia = diaFiltro(o);
+    return !!dia && (!de || dia >= de) && (!ate || dia <= ate);
+  };
+
   function aplicarFiltros(list, f = filtros) {
-    const de = f.de ? new Date(f.de + 'T00:00:00') : null;
-    const ate = f.ate ? new Date(f.ate + 'T23:59:59') : null;
     return list.filter((o) =>
       (!f.status || o.status === f.status) &&
       (!f.tecnico || o.tecnicoId === f.tecnico || (f.tecnico === '_sem' && !o.tecnicoId)) &&
@@ -61,7 +77,7 @@
       (!f.prioridade || o.prioridade === f.prioridade) &&
       (!f.tipo || o.tipo === f.tipo) &&
       passaMaterial(o, f.material) &&
-      (!de || new Date(o.criadaEm) >= de) && (!ate || new Date(o.criadaEm) <= ate) &&
+      passaData(o, f.de, f.ate) &&
       matches(o, f.q));
   }
 
@@ -97,8 +113,8 @@
             <div class="field"><label for="f-cli">Cliente</label><select id="f-cli" class="select" data-f="cliente">${VG.options(clientes.map((c) => ({ value: c.id, label: c.nome })), f.cliente, 'Todos')}</select></div>
             <div class="field"><label for="f-pr">Prioridade</label><select id="f-pr" class="select" data-f="prioridade">${VG.options(Object.entries(VG.PRIORIDADES).map(([k, p]) => ({ value: k, label: p.label })), f.prioridade, 'Todas')}</select></div>
             <div class="field" id="f-tipo-box"><label for="f-tipo">Tipo</label><select id="f-tipo" class="select" data-f="tipo">${VG.options(VG.tiposCom(...new Set(S().list('ordens').map((o) => o.tipo))).filter((t) => t !== 'Instalação'), f.tipo, 'Todos')}</select></div>
-            <div class="field"><label for="f-de">De</label><input id="f-de" type="date" class="input" value="${f.de}"></div>
-            <div class="field"><label for="f-ate">Até</label><input id="f-ate" type="date" class="input" value="${f.ate}"></div>
+            <div class="field"><label for="f-de" id="f-de-lb">De</label><input id="f-de" type="date" class="input" value="${f.de}"></div>
+            <div class="field"><label for="f-ate" id="f-ate-lb">Até</label><input id="f-ate" type="date" class="input" value="${f.ate}"></div>
             <div class="toolbar__btns" id="f-btns">
               <button type="button" class="btn btn-primary btn-sm" id="f-buscar">${VG.icon('search')}<span>Buscar</span></button>
               <button type="button" class="btn btn-ghost btn-sm" id="f-clear">${VG.icon('x')}<span>Limpar</span></button>
@@ -169,9 +185,13 @@
       table(el);
     }));
     const tpBox = VG.$('#f-tipo-box', el); if (tpBox) tpBox.classList.toggle('hidden', aba === 'instalacao');
+    // o período filtra pela data que aparece na lista desta aba
+    const qual = { realizar: 'Prevista', realizadas: 'Realizada', canceladas: 'Cancelada' }[sub] || '';
+    const lbDe = VG.$('#f-de-lb', el), lbAte = VG.$('#f-ate-lb', el);
+    if (lbDe) lbDe.textContent = qual ? `${qual} de` : 'De';
+    if (lbAte) lbAte.textContent = qual ? `${qual} até` : 'Até';
 
     const hoje = VG.toInputDate();
-    const fimDe = (o) => (o.atendimento && o.atendimento.fim) || o.atualizadoEm || o.criadaEm;
     const list = doTipo.filter((o) => grupoStatus(o) === sub);
     if (sub === 'realizar') {
       list.sort((a, b) => (PESO[a.prioridade] ?? 2) - (PESO[b.prioridade] ?? 2)
