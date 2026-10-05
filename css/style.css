@@ -1050,3 +1050,40 @@ html.is-saving::after {
 .os-lines--real .os-line { grid-template-columns: 12px minmax(0, 1fr) 7.6rem 9rem 8.5rem 10.5rem auto; }
 @media (max-width: 1100px) { .os-lines--real .os-line { grid-template-columns: 12px minmax(0, 1fr) 7.2rem 8rem 8.5rem 9.5rem; } }
 @media (max-width: 720px) { .os-lines--real .os-line { grid-template-columns: 12px minmax(0, 1fr) auto auto; } .os-line__num small { text-align: right; } }
+
+/* Busca de material (lista embaixo do campo) */
+.mat-search { position: relative; }
+.mat-search .input-group { width: 100%; }
+.mat-sug {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 60; max-height: 280px; overflow-y: auto;
+  background: var(--surface-solid); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.35); padding: .3rem;
+}
+.mat-search .mat-sug { right: auto; min-width: max(100%, 340px); max-width: min(480px, 85vw); }
+.mat-sug__item {
+  display: flex; align-items: center; justify-content: space-between; gap: .7rem; width: 100%; padding: .55rem .65rem; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; font-size: .9rem; text-align: left; cursor: pointer;
+}
+.mat-sug__item span { display: flex; flex-direction: column; min-width: 0; }
+.mat-sug__item em { font-style: normal; color: var(--text-3); font-size: .8rem; white-space: nowrap; }
+.mat-sug__item:hover, .mat-sug__item.is-on { background: var(--surface-3); }
+.mat-sug__vazio { padding: .6rem .65rem; font-size: .85rem; color: var(--text-3); }
+
+/* Materiais com valor (lançados pela supervisão) */
+.mat-add.mat-add--cod.mat-add--val { grid-template-columns: 100px minmax(0, 1fr) 72px 118px 100px auto; }
+.mat-list--val li { flex-wrap: wrap; }
+.mat-list--val .mat-list__nome { flex: 1 1 180px; display: flex; flex-direction: column; min-width: 0; }
+.mat-ed { display: flex; flex-direction: column; gap: .15rem; width: 96px; }
+.mat-ed small { font-size: .7rem; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mat-ed .input { min-height: 34px; padding: .3rem .5rem; font-size: .88rem; }
+.mat-ed.invalid .input { border-color: var(--st-red); }
+.mat-list--val li b.mat-sub { margin-left: 0; min-width: 88px; text-align: right; align-items: flex-end; }
+.mat-list--val li.mat-total { justify-content: space-between; }
+.materials--val .num { text-align: right; }
+.materials--val tfoot td { font-weight: 700; border-top: 1px solid var(--line-strong); }
+@media (max-width: 720px) {
+  .mat-add.mat-add--cod.mat-add--val { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .mat-add.mat-add--cod.mat-add--val .field:nth-child(5) { grid-column: 1 / -1; }
+  .mat-search .mat-sug { right: 0; min-width: 0; max-width: none; }
+  .mat-list--val .mat-list__nome { flex-basis: calc(100% - 3rem); }
+  .mat-ed { width: auto; flex: 1 1 0; }
+}

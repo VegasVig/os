@@ -31,6 +31,9 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Filtro por data:** escolha **De** e **Até** e toque em **Buscar**. No celular, o botão fica no fim do painel **Filtros**.
 - **Fotos do técnico:** o botão **Tirar foto** abre direto a câmera do celular, não a galeria.
 - **Materiais pela supervisão:** com a OS **Realizada** (ou **Reaberta**), o quadro **Conferência da OS** tem o botão **Lançar materiais utilizados** / **Corrigir materiais utilizados**. A supervisora inclui, altera ou remove itens do técnico antes de processar. Tudo fica no histórico.
+- **Data e hora nas fotos:** cada foto tirada pelo técnico recebe a data e a hora gravadas no canto inferior direito. Elas aparecem na OS, no PDF e no arquivo salvo no Drive.
+- **Valores dos materiais (só supervisão):** ao lançar ou corrigir os materiais utilizados, a supervisora informa o **Valor unit. (R$)**. Ela também ajusta a quantidade e o valor de cada item do técnico direto na lista, e o total é calculado na hora. Os valores aparecem só para a supervisão: na OS (colunas Valor unit. e Total), na Conferência (Valor dos materiais) e no CSV de Relatórios. Técnico, cliente, link e PDF continuam sem valores.
+- **Busca de material:** ao digitar no campo **Material** (ou **Código**), aparece uma lista com os materiais já usados nas OS. Ao tocar em um, o código, o material, a unidade e, para a supervisão, o último valor lançado são preenchidos. Também dá para digitar um material novo.
 - **E-mail "Cliente retirado":** numa OS do tipo **Retirada**, ao clicar em **Marcar como processada** o sistema envia um e-mail com a logo e os dados do cliente para financeiro2@vegasvigilancia.com.br, julianolopes47@gmail.com, controle.cftv@vegasvigilancia.com.br e gilduque@vegasvigilancia.com.br. Ele é enviado uma vez só, mesmo se a OS for reaberta e processada de novo. O envio (ou a falha) aparece na conferência e no histórico. Os endereços ficam em `EMAIL_RETIRADA`, no início do `Code.gs`.
 - **Para ativar o e-mail:** depois de colar o `Code.gs` novo e salvar, escolha a função **autorizarEmail** e clique em **▶ Executar**. Autorize o envio de e-mails. Depois publique uma **nova versão** em **Implantar → Gerenciar implantações**. O e-mail sai da conta Google dona do Apps Script.
 
@@ -40,7 +43,7 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Utilizou algum material?:** para finalizar, o técnico responde **SIM** ou **NÃO**.
   - Com **SIM**, ele informa os materiais usados e a quantidade. Pode tocar num material separado pela supervisão e ajustar a quantidade.
   - Com **NÃO**, a OS registra "Não foi utilizado material".
-- **Sem valores na OS:** a OS, a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. Valores lançados antes desta versão continuam guardados na planilha e aparecem apenas na exportação CSV de **Relatórios**.
+- **Valores:** a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. Os valores lançados pela supervisão aparecem apenas para a supervisão e na exportação CSV de **Relatórios**.
 - **Conferência:** depois que o cliente assina, a OS fica em **Realizadas**. A supervisão abre a OS e confere, no quadro **Conferência da OS**, o que foi enviado e o que foi utilizado. Depois clica em **Marcar como processada**.
 - **Reabrir OS:** numa OS processada, o botão **Reabrir OS** pede o motivo.
   - A OS fica **Reaberta** e permite **Corrigir materiais utilizados** e **Corrigir dados da OS**. (Os materiais também podem ser lançados/corrigidos antes de processar, com a OS Realizada.)

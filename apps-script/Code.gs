@@ -510,11 +510,12 @@ const ACOES = {
       const os = osDaSupervisao_(s, req.id);
       if (['concluida', 'reaberta'].indexOf(os.status) < 0) throw new Error(os.status === 'processada' ? 'Reabra a OS antes de corrigir os materiais.' : 'Os materiais podem ser lançados pela supervisão depois que a OS for realizada (assinada pelo cliente).');
       const at = os.atendimento || (os.atendimento = {});
-      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais) : [];
+      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais, true) : [];
       if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
       at.usouMaterial = req.usouMaterial;
       at.materiais = mats;
       conferencia_(os, 'correcao', s, '');
+      // o histórico sai no PDF do cliente: registra os itens, nunca os valores
       hist_(os, req.usouMaterial ? 'Supervisão lançou/corrigiu os materiais utilizados: ' + resumoMats_(mats) + '.' : 'Supervisão corrigiu: não foi utilizado material.', s.nome);
       os.atualizadoEm = agora_();
       upsert_('ordens', os);
@@ -667,7 +668,7 @@ function logTransicao_(os, antes) {
  * `antigos`: itens já gravados — um valor interno existente (versão anterior do
  * sistema) é mantido no banco pelo id do item, mas nunca é aceito do navegador.
  */
-function limparMats_(lista, antigos) {
+function limparMats_(lista, antigos, aceitarValor) {
   const ant = {};
   (antigos || []).forEach((m) => { if (m && m.id) ant[m.id] = m; });
   return (Array.isArray(lista) ? lista : []).slice(0, 200).map((m) => {
@@ -680,7 +681,11 @@ function limparMats_(lista, antigos) {
       quantidade: isFinite(q) && q > 0 ? Math.round(q * 1000) / 1000 : 0,
       unidade: String(m.unidade || '').trim().slice(0, 30),
     };
-    if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
+    if (aceitarValor) {
+      // supervisão lançando materiais: o valor unitário vem dela (vazio = sem valor)
+      const v = Number(String(m.valor == null ? '' : m.valor).replace(',', '.'));
+      if (m.valor !== '' && m.valor != null && isFinite(v) && v >= 0) out.valor = Math.round(v * 100) / 100;
+    } else if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
     return out;
   }).filter((m) => m.descricao && m.quantidade > 0);
 }
