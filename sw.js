@@ -2,7 +2,7 @@
 // "Rede primeiro": com internet sempre pega a versão mais nova publicada no
 // GitHub; sem internet usa a última cópia salva. Suas alterações chegam
 // sozinhas no app instalado.
-const CACHE = 'vegas-os-v5';
+const CACHE = 'vegas-os-v6';
 const ARQUIVOS = ['./', './index.html', './manifest.json', './assets/icons/icon-192.png', './assets/icons/icon-512.png'];
 
 self.addEventListener('install', e => {

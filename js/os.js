@@ -28,8 +28,8 @@
   const codCliente = (o) => (o.cliente && o.cliente.codigo) || ((o.clienteId && S().get('clientes', o.clienteId)) || {}).codigo || '';
 
   /* ---------- Abas da supervisora ---------- */
-  // Instalação tem aba própria; os demais tipos (Manutenção, Preventiva, Corretiva,
-  // Suporte, Vistoria, Outro) ficam em Manutenção.
+  // Instalação tem aba própria; os demais tipos (Manutenção, Preventiva, Venda,
+  // Retirada e os tipos antigos) ficam em Manutenção.
   const lerAba = (k, pad) => { try { return localStorage.getItem(k) || pad; } catch (e) { return pad; } };
   const gravarAba = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
   let aba = lerAba('vegas_os_aba', 'manutencao');
@@ -96,10 +96,13 @@
             <div class="field"><label for="f-tec">Técnico</label><select id="f-tec" class="select" data-f="tecnico">${VG.options([{ value: '_sem', label: 'Sem técnico' }, ...tecnicos.map((t) => ({ value: t.id, label: t.nome }))], f.tecnico, 'Todos')}</select></div>
             <div class="field"><label for="f-cli">Cliente</label><select id="f-cli" class="select" data-f="cliente">${VG.options(clientes.map((c) => ({ value: c.id, label: c.nome })), f.cliente, 'Todos')}</select></div>
             <div class="field"><label for="f-pr">Prioridade</label><select id="f-pr" class="select" data-f="prioridade">${VG.options(Object.entries(VG.PRIORIDADES).map(([k, p]) => ({ value: k, label: p.label })), f.prioridade, 'Todas')}</select></div>
-            <div class="field" id="f-tipo-box"><label for="f-tipo">Tipo</label><select id="f-tipo" class="select" data-f="tipo">${VG.options(VG.TIPOS_ATENDIMENTO.filter((t) => t !== 'Instalação'), f.tipo, 'Todos')}</select></div>
-            <div class="field"><label for="f-de">De</label><input id="f-de" type="date" class="input" data-f="de" value="${f.de}"></div>
-            <div class="field"><label for="f-ate">Até</label><input id="f-ate" type="date" class="input" data-f="ate" value="${f.ate}"></div>
-            <button class="btn btn-ghost btn-sm" id="f-clear" style="margin-bottom:3px">${VG.icon('x')}<span>Limpar</span></button>
+            <div class="field" id="f-tipo-box"><label for="f-tipo">Tipo</label><select id="f-tipo" class="select" data-f="tipo">${VG.options(VG.tiposCom(...new Set(S().list('ordens').map((o) => o.tipo))).filter((t) => t !== 'Instalação'), f.tipo, 'Todos')}</select></div>
+            <div class="field"><label for="f-de">De</label><input id="f-de" type="date" class="input" value="${f.de}"></div>
+            <div class="field"><label for="f-ate">Até</label><input id="f-ate" type="date" class="input" value="${f.ate}"></div>
+            <div class="toolbar__btns" id="f-btns">
+              <button type="button" class="btn btn-primary btn-sm" id="f-buscar">${VG.icon('search')}<span>Buscar</span></button>
+              <button type="button" class="btn btn-ghost btn-sm" id="f-clear">${VG.icon('x')}<span>Limpar</span></button>
+            </div>
           </div>
           <div id="os-table"></div>
         </section>
@@ -112,6 +115,21 @@
       table(el);
     }));
     VG.$('#f-toggle', el).onclick = () => VG.$('#os-toolbar', el).classList.toggle('is-open');
+    // Buscar: aplica o período (De / Até) e os demais filtros de uma vez
+    const buscar = () => {
+      const de = VG.$('#f-de', el).value, ate = VG.$('#f-ate', el).value;
+      VG.$$('#f-de, #f-ate', el).forEach((x) => x.closest('.field').classList.remove('invalid'));
+      if (de && ate && de > ate) { VG.$('#f-ate', el).closest('.field').classList.add('invalid'); return VG.toast('A data "Até" precisa ser igual ou depois da data "De".', 'warn'); }
+      filtros.de = de; filtros.ate = ate; filtros.q = VG.$('#f-q', el).value;
+      VG.$$('select[data-f]', el).forEach((x) => (filtros[x.dataset.f] = x.value));
+      table(el);
+      VG.$('#os-toolbar', el).classList.remove('is-open');
+      const n = VG.$$('.os-line', el).length;
+      VG.toast(n ? `${n} ${n === 1 ? 'ordem encontrada' : 'ordens encontradas'} nesta aba.` : 'Nenhuma ordem encontrada com esses filtros.', n ? 'success' : 'info');
+    };
+    VG.$('#f-buscar', el).onclick = buscar;
+    VG.$$('#f-de, #f-ate', el).forEach((x) => x.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscar(); } }));
+    VG.$('#f-q', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscar(); } });
     VG.$('#os-import', el).onclick = () => VG.OSCSV.importar(() => table(el));
     VG.$('#f-clear', el).onclick = () => { filtros = VAZIO(); if (location.hash !== '#/os') location.hash = '#/os'; else renderList(el); };
     table(el);
@@ -254,7 +272,7 @@
               <div class="field"><label>Número da OS</label><input class="input" value="${previewNum}" readonly><span class="hint">${editing ? 'Número definitivo.' : 'Gerado automaticamente ao criar.'}</span></div>
               <div class="field"><label>Data de abertura</label><input class="input" value="${VG.fmtDateTime(editing ? os.criadaEm : VG.nowISO())}" readonly></div>
               <div class="field span-2"><label for="os-tipo">Tipo de atendimento<span class="req">*</span></label>
-                <select id="os-tipo" name="tipo" class="select">${VG.options(VG.TIPOS_ATENDIMENTO, os ? os.tipo : 'Manutenção')}</select></div>
+                <select id="os-tipo" name="tipo" class="select">${VG.options(VG.tiposCom(os && os.tipo), os ? os.tipo : 'Manutenção')}</select></div>
               <div class="field span-all"><span class="label">Prioridade<span class="req">*</span></span>
                 <div class="seg">${Object.entries(VG.PRIORIDADES).map(([k, p]) => `
                   <input type="radio" name="prioridade" id="pr-${k}" value="${k}" ${(os ? os.prioridade : 'normal') === k ? 'checked' : ''}>
@@ -300,8 +318,13 @@
 
           <section class="panel">
             <div class="panel__head"><h2>${VG.icon('alert')}Descrição do problema<span class="req">*</span></h2></div>
-            <div class="panel__body"><div class="field"><label for="os-prob" class="sr-only">Descrição do problema</label>
-              <textarea id="os-prob" name="problema" class="textarea lg" placeholder="Ex.: Cliente informa que a câmera 04 está sem imagem desde ontem.">${v(os && os.problema)}</textarea></div></div>
+            <div class="panel__body stack">
+              <div class="field"><label for="os-prob-sel">Problema</label>
+                <select id="os-prob-sel" class="select">${VG.options(VG.PROBLEMAS, problemaDe(os && os.problema), 'Toque para escolher o problema…')}</select>
+                <span class="hint">Escolha na lista e, se precisar, complete os detalhes abaixo.</span></div>
+              <div class="field"><label for="os-prob">Detalhes do problema</label>
+              <textarea id="os-prob" name="problema" class="textarea lg" placeholder="Ex.: Cliente informa que a câmera 04 está sem imagem desde ontem.">${v(os && os.problema)}</textarea></div>
+            </div>
           </section>
 
           <section class="panel">
@@ -332,6 +355,14 @@
     const form = VG.$('#osf', el);
     VG.bindMasks(form);
     VG.Mat.bindEditor(form, 'lv', () => levar, { codigoObrigatorio: true, vazio: 'Nenhum material separado para esta OS.' });
+    // Problema escolhido na lista: fica no início da descrição, mantendo o que já foi escrito
+    const selProb = VG.$('#os-prob-sel', el), txtProb = VG.$('#os-prob', el);
+    selProb.onchange = () => {
+      const resto = semProblema(txtProb.value);
+      txtProb.value = selProb.value ? selProb.value + (resto ? ' - ' + resto : '') : resto;
+      txtProb.closest('.field').classList.remove('invalid');
+    };
+    txtProb.addEventListener('input', () => { const p = problemaDe(txtProb.value); if (selProb.value !== p) selProb.value = p; });
     const selCli = VG.$('#os-cli', el);
     const fillCliente = (cli) => {
       if (!cli) return;
@@ -431,6 +462,17 @@
   }
 
   const resumoMats = (mats) => VG.Mat.resumo(mats);
+
+  /** Problema da lista que abre a descrição (ex.: "DISPARO - zona 3") */
+  function problemaDe(txt) {
+    const t = String(txt || '').trim().toUpperCase();
+    return VG.PROBLEMAS.filter((p) => t === p || (t.startsWith(p) && /^\s*[-–—:\n]/.test(t.slice(p.length)))).sort((a, b) => b.length - a.length)[0] || '';
+  }
+  function semProblema(txt) {
+    const p = problemaDe(txt);
+    const t = String(txt || '').trim();
+    return p ? t.slice(p.length).replace(/^\s*[-–—:]?\s*/, '') : t;
+  }
 
   function criadaModal(os) {
     VG.modal({
@@ -625,13 +667,18 @@
 
   /* ---------- CONFERÊNCIA DA SUPERVISÃO (processar / reabrir) ---------- */
   const PODE_PROCESSAR = ['concluida', 'reaberta'];
+  const ehRetirada = (os) => VG.norm(os && os.tipo) === 'retirada';
+  /** Quem recebe o e-mail "Cliente retirado" (o envio é feito pelo servidor, no Code.gs) */
+  const EMAILS_RETIRADA = ['financeiro2@vegasvigilancia.com.br', 'julianolopes47@gmail.com', 'controle.cftv@vegasvigilancia.com.br', 'gilduque@vegasvigilancia.com.br'];
   function conferenciaHTML(os) {
     if (!['aguardando_cliente'].concat(VG.CONCLUIDAS).includes(os.status)) return '';
     const st = os.status;
     const nLevar = (os.materiaisLevar || []).length, nUsados = ((os.atendimento && os.atendimento.materiais) || []).length;
     const itens = (n) => `${n} ${n === 1 ? 'item' : 'itens'}`;
     const hist = (os.conferencias || []).slice().reverse();
-    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais corrigidos' };
+    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais utilizados lançados/corrigidos' };
+    const retirada = ehRetirada(os);
+    const em = os.emailRetirada || {};
     return `
       <section class="panel" id="d-conf"><div class="panel__head"><h3>${VG.icon('check')}Conferência da OS</h3>${VG.badge(st)}</div>
         <div class="panel__body conf-box">
@@ -640,13 +687,16 @@
           <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
           <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
           <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
+          ${retirada ? `<div class="conf-row"><span>E-mail "Cliente retirado"</span>${em.enviadoEm ? `<b>Enviado em ${VG.fmtDateTime(em.enviadoEm)}</b>` : em.erro ? `<b class="conf-err">Não enviado</b>` : '<b>Será enviado ao processar</b>'}</div>
+            ${em.erro && !em.enviadoEm ? `<div class="notice">${VG.icon('alert')}<div>O e-mail de cliente retirado não foi enviado: ${VG.esc(em.erro)}</div></div>` : ''}` : ''}
           ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}
           ${st === 'reaberta' ? `<div class="notice">${VG.icon('refresh')}<div><strong>OS reaberta</strong> em ${VG.fmtDateTime(os.reabertaEm)}${os.reabertaPor ? ' por ' + VG.esc(os.reabertaPor) : ''}${os.reabertaMotivo ? '. Motivo: ' + VG.esc(os.reabertaMotivo) : ''}. Faça as correções e marque como processada novamente.</div></div>` : ''}
           ${st === 'aguardando_cliente' ? '<p class="hint" style="margin:0">A conferência fica disponível depois que o cliente assinar a OS.</p>' : ''}
-          ${st === 'concluida' ? '<p class="hint" style="margin:0">Confira os materiais separados e os utilizados antes de processar.</p>' : ''}
+          ${st === 'concluida' ? '<p class="hint" style="margin:0">Confira os materiais separados e os utilizados antes de processar. Se faltar algum material ou a quantidade estiver errada, lance ou corrija abaixo.</p>' : ''}
+          ${retirada && PODE_PROCESSAR.includes(st) && !em.enviadoEm ? `<div class="notice notice--info">${VG.icon('mail')}<div>OS de <strong>Retirada</strong>: ao marcar como processada, o sistema envia o e-mail <strong>Cliente retirado</strong> com os dados do cliente para ${EMAILS_RETIRADA.map(VG.esc).join(', ')}.</div></div>` : ''}
           <div class="conf-actions stack">
-            ${st === 'reaberta' ? `<button class="btn" id="d-corrigir">${VG.icon('box')}<span>Corrigir materiais utilizados</span></button>
-              <a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Corrigir dados da OS</span></a>` : ''}
+            ${PODE_PROCESSAR.includes(st) ? `<button class="btn" id="d-corrigir">${VG.icon('box')}<span>${nUsados ? 'Corrigir materiais utilizados' : 'Lançar materiais utilizados'}</span></button>` : ''}
+            ${st === 'reaberta' ? `<a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Corrigir dados da OS</span></a>` : ''}
             ${PODE_PROCESSAR.includes(st) ? `<button class="btn btn-primary" id="d-processar">${VG.icon('check')}<span>Marcar como processada</span></button>` : ''}
             ${st === 'processada' ? `<button class="btn" id="d-reabrir">${VG.icon('refresh')}<span>Reabrir OS</span></button>` : ''}
           </div>
@@ -659,11 +709,17 @@
     const P = VG.$('#d-processar', el);
     if (P) P.onclick = async () => {
       const os = S().get('ordens', id);
-      if (!(await VG.confirm(`Confirma que conferiu a OS #${os.numero}? Ela será marcada como PROCESSADA e o fluxo desta OS será finalizado.`, { title: 'Marcar como processada', ok: 'Marcar como processada' }))) return;
-      VG.setBusy(P, true, 'Processando…');
+      const ret = ehRetirada(os) && !(os.emailRetirada && os.emailRetirada.enviadoEm);
+      if (!(await VG.confirm(`Confirma que conferiu a OS #${os.numero}? Ela será marcada como PROCESSADA e o fluxo desta OS será finalizado.${ret ? ' Como é uma RETIRADA, o e-mail "Cliente retirado" será enviado.' : ''}`, { title: 'Marcar como processada', ok: 'Marcar como processada' }))) return;
+      VG.setBusy(P, true, ret ? 'Processando e enviando e-mail…' : 'Processando…');
       try {
-        const salva = await S().processarOS(id);
-        VG.toast(`OS #${salva.numero} marcada como PROCESSADA.`, 'success');
+        // logo do e-mail: a do sistema (Configurações) ou, se não houver, a logo padrão da Vegas
+        const extra = ret && !S().getConfig().logoDataUrl && VG.LOGO_EMBED ? { logo: VG.LOGO_EMBED } : {};
+        const salva = await S().processarOS(id, extra);
+        const em = salva.emailRetirada || {};
+        if (ret && em.enviadoEm) VG.toast(`OS #${salva.numero} PROCESSADA. E-mail "Cliente retirado" enviado.`, 'success', 6000);
+        else if (ret) VG.toast(`OS #${salva.numero} PROCESSADA, mas o e-mail "Cliente retirado" não foi enviado: ${em.erro || 'o servidor ainda está na versão antiga (publique o Code.gs novo)'}.`, 'warn', 9000);
+        else VG.toast(`OS #${salva.numero} marcada como PROCESSADA.`, 'success');
         again();
       } catch (e) { VG.setBusy(P, false); VG.toast('Não foi possível processar a OS: ' + e.message, 'error', 7000); }
     };
@@ -683,7 +739,7 @@
     if (C) C.onclick = () => corrigirMateriais(id, again);
   }
 
-  /** Correção dos materiais utilizados numa OS reaberta (feita pela supervisão) */
+  /** Supervisão lança ou corrige os materiais utilizados numa OS realizada ou reaberta */
   function corrigirMateriais(id, done) {
     const os = S().get('ordens', id);
     const a = os.atendimento || {};
@@ -708,12 +764,12 @@
       },
       actions: [
         { label: 'Voltar' },
-        { label: 'Salvar correção', cls: 'btn-primary', icon: 'check', onClick: async () => {
+        { label: 'Salvar materiais', cls: 'btn-primary', icon: 'check', onClick: async () => {
           if (estado.usou !== true && estado.usou !== false) { VG.toast('Informe se foi utilizado algum material.', 'warn'); return false; }
           if (estado.usou && !estado.itens.length) { VG.toast('Adicione os materiais utilizados ou marque NÃO.', 'warn'); return false; }
           try {
             await S().corrigirMateriais(id, { usouMaterial: estado.usou, materiais: estado.usou ? estado.itens : [] });
-            VG.toast('Materiais utilizados corrigidos.', 'success');
+            VG.toast('Materiais utilizados salvos na OS.', 'success');
             done && done();
           } catch (e) { VG.toast('Não foi possível salvar a correção: ' + e.message, 'error', 7000); return false; }
         } },

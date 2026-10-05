@@ -55,7 +55,16 @@ const SUPERVISORAS = [
 /** OS já assinadas pelo cliente (conferidas ou não pela supervisão) */
 const CONCLUIDAS_ = ['concluida', 'processada', 'reaberta'];
 /** Campos da conferência: só mudam pelas ações processarOS / reabrirOS / corrigirMateriais */
-const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias'];
+const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias', 'emailRetirada'];
+
+/**
+ * OS do tipo RETIRADA: quando a supervisão marca como PROCESSADA, o sistema
+ * envia o e-mail "Cliente retirado" (com a logo e os dados do cliente) para:
+ */
+const EMAIL_RETIRADA = {
+  PARA: ['financeiro2@vegasvigilancia.com.br', 'julianolopes47@gmail.com', 'controle.cftv@vegasvigilancia.com.br', 'gilduque@vegasvigilancia.com.br'],
+  ASSUNTO: 'Cliente retirado',
+};
 
 /* =========================================================================
    PÁGINA
@@ -451,6 +460,17 @@ const ACOES = {
       os.processadaPorId = s.userId;
       conferencia_(os, 'processada', s, '');
       hist_(os, 'OS conferida pela supervisão e marcada como PROCESSADA.', s.nome);
+      // Retirada: avisa por e-mail (uma vez só; se a OS for reaberta e processada de novo, não repete)
+      if (norm_(os.tipo) === 'retirada' && !(os.emailRetirada && os.emailRetirada.enviadoEm)) {
+        try {
+          enviarEmailRetirada_(os, req.logo);
+          os.emailRetirada = { enviadoEm: agora_(), para: EMAIL_RETIRADA.PARA.slice(), por: s.nome };
+          hist_(os, 'E-mail "' + EMAIL_RETIRADA.ASSUNTO + '" enviado para ' + EMAIL_RETIRADA.PARA.join(', ') + '.', 'Sistema');
+        } catch (err) {
+          os.emailRetirada = { erro: String((err && err.message) || err).slice(0, 300), tentativaEm: agora_() };
+          hist_(os, 'Falha ao enviar o e-mail "' + EMAIL_RETIRADA.ASSUNTO + '": ' + os.emailRetirada.erro, 'Sistema');
+        }
+      }
       os.atualizadoEm = agora;
       upsert_('ordens', os);
       registrarAtividade_('OS #' + os.numero + ' processada por ' + String(s.nome || '').split(' ')[0], os.id, 'check');
@@ -482,20 +502,20 @@ const ACOES = {
     });
   },
 
-  /** OS reaberta: a supervisão corrige o "utilizou material" e os materiais utilizados */
+  /** OS realizada ou reaberta: a supervisão lança/corrige o "utilizou material" e os materiais utilizados */
   corrigirMateriais(req) {
     const s = sessao_(req, PAPEIS_SUP);
     if (req.usouMaterial !== true && req.usouMaterial !== false) throw new Error('Informe se foi utilizado algum material.');
     return comLock_(() => {
       const os = osDaSupervisao_(s, req.id);
-      if (os.status !== 'reaberta') throw new Error('Reabra a OS antes de corrigir os materiais.');
+      if (['concluida', 'reaberta'].indexOf(os.status) < 0) throw new Error(os.status === 'processada' ? 'Reabra a OS antes de corrigir os materiais.' : 'Os materiais podem ser lançados pela supervisão depois que a OS for realizada (assinada pelo cliente).');
       const at = os.atendimento || (os.atendimento = {});
       const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais) : [];
       if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
       at.usouMaterial = req.usouMaterial;
       at.materiais = mats;
       conferencia_(os, 'correcao', s, '');
-      hist_(os, req.usouMaterial ? 'Supervisão corrigiu os materiais utilizados: ' + resumoMats_(mats) + '.' : 'Supervisão corrigiu: não foi utilizado material.', s.nome);
+      hist_(os, req.usouMaterial ? 'Supervisão lançou/corrigiu os materiais utilizados: ' + resumoMats_(mats) + '.' : 'Supervisão corrigiu: não foi utilizado material.', s.nome);
       os.atualizadoEm = agora_();
       upsert_('ordens', os);
       bump_();
@@ -675,6 +695,128 @@ function semValores_(os) {
 
 function resumoMats_(mats) {
   return (mats || []).map((m) => (m.codigo ? m.codigo + ' ' : '') + m.descricao + ' (' + m.quantidade + (m.unidade ? ' ' + m.unidade : '') + ')').join('; ');
+}
+
+/* ---------- E-mail "Cliente retirado" ---------- */
+
+/** Monta e envia o e-mail de cliente retirado (logo + dados do cliente + resumo da OS) */
+function enviarEmailRetirada_(os, logoDoNavegador) {
+  const c = os.cliente || {};
+  const at = os.atendimento || {};
+  const cad = os.clienteId ? (ler_('clientes').find((x) => x.id === os.clienteId) || {}) : {};
+  const codigo = c.codigo || cad.codigo || '';
+  const cfg = config_();
+  const empresa = (cfg.empresa && cfg.empresa.nome) || 'Vegas Vigilância e Segurança';
+  const end1 = [c.endereco, c.numero].filter(Boolean).join(', ');
+  const end2 = [c.complemento, c.bairro].filter(Boolean).join(' · ');
+  const end3 = [c.cidade, c.estado].filter(Boolean).join(' - ');
+  const endereco = [end1, end2, end3, c.cep ? 'CEP ' + fmtCep_(c.cep) : ''].filter(Boolean).join(' · ');
+
+  const cliente = [
+    ['Cliente', c.nome], ['Nº do cliente', codigo], ['CPF/CNPJ', fmtDoc_(c.cpf_cnpj)],
+    ['Telefone', fmtTel_(c.telefone)], ['E-mail', c.email], ['Endereço', endereco],
+  ];
+  const ordem = [
+    ['OS nº', os.numero], ['Tipo', os.tipo], ['Problema', os.problema], ['Técnico', os.tecnicoNome],
+    ['Aberta em', fmtDataHora_(os.criadaEm) + (os.criadaPor ? ' por ' + os.criadaPor : '')],
+    ['Retirada realizada em', fmtDataHora_(at.fim || (os.assinaturaCliente && os.assinaturaCliente.dataHora))],
+    ['Serviço executado', at.servico], ['Observações do técnico', at.observacoes],
+    ['Assinado pelo cliente', os.assinaturaCliente ? os.assinaturaCliente.nome + (os.assinaturaCliente.documento ? ' (doc. ' + os.assinaturaCliente.documento + ')' : '') : ''],
+    ['Processada em', fmtDataHora_(os.processadaEm) + (os.processadaPor ? ' por ' + os.processadaPor : '')],
+  ];
+  const mats = at.usouMaterial === false ? [] : (at.materiais || []);
+
+  const linhas = (lista) => lista.filter((x) => x[1] !== '' && x[1] != null).map((x) =>
+    '<tr><td style="padding:7px 12px;border-bottom:1px solid #e6e6e6;color:#666;width:38%;vertical-align:top;font-size:13px">' + esc_(x[0]) + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #e6e6e6;color:#111;font-size:14px;white-space:pre-wrap"><b>' + esc_(x[1]) + '</b></td></tr>').join('');
+  const titulo = (t) => '<h3 style="margin:22px 0 8px;font-size:15px;color:#b30000;text-transform:uppercase;letter-spacing:.04em">' + esc_(t) + '</h3>';
+  const tabela = (html) => '<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;border:1px solid #e6e6e6">' + html + '</table>';
+  const tabMats = mats.length
+    ? tabela('<tr style="background:#f4f4f4"><td style="padding:7px 12px;font-size:12px;color:#666">Código</td><td style="padding:7px 12px;font-size:12px;color:#666">Material</td><td style="padding:7px 12px;font-size:12px;color:#666;text-align:right">Qtd.</td></tr>' +
+        mats.map((m) => '<tr><td style="padding:7px 12px;border-top:1px solid #e6e6e6;font-size:13px">' + esc_(m.codigo || '—') + '</td><td style="padding:7px 12px;border-top:1px solid #e6e6e6;font-size:13px">' + esc_(m.descricao) +
+          '</td><td style="padding:7px 12px;border-top:1px solid #e6e6e6;font-size:13px;text-align:right">' + esc_(m.quantidade + (m.unidade ? ' ' + m.unidade : '')) + '</td></tr>').join(''))
+    : '<p style="margin:0;font-size:14px;color:#444">Não foi utilizado material.</p>';
+
+  const logo = logoBlob_(logoDoNavegador);
+  const html =
+    '<div style="background:#f2f2f2;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">' +
+    '<div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0">' +
+    '<div style="background:#000000;padding:18px 24px;text-align:center">' +
+      (logo ? '<img src="cid:logo" alt="' + esc_(empresa) + '" style="max-height:70px;max-width:260px">' : '<span style="color:#fff;font-size:20px;font-weight:bold">' + esc_(empresa) + '</span>') +
+    '</div>' +
+    '<div style="padding:22px 24px">' +
+      '<h2 style="margin:0 0 4px;font-size:22px;color:#111">CLIENTE RETIRADO</h2>' +
+      '<p style="margin:0;color:#555;font-size:14px">A retirada do cliente abaixo foi realizada e conferida pela supervisão (OS nº ' + esc_(os.numero) + ').</p>' +
+      titulo('Dados do cliente') + tabela(linhas(cliente)) +
+      titulo('Ordem de serviço') + tabela(linhas(ordem)) +
+      titulo('Materiais utilizados') + tabMats +
+    '</div>' +
+    '<div style="background:#f7f7f7;padding:14px 24px;font-size:12px;color:#777;text-align:center">E-mail automático do Vegas OS · ' + esc_(empresa) + '</div>' +
+    '</div></div>';
+
+  const texto = 'CLIENTE RETIRADO\n\n' +
+    cliente.concat(ordem).filter((x) => x[1] !== '' && x[1] != null).map((x) => x[0] + ': ' + x[1]).join('\n') +
+    '\n\nMateriais utilizados: ' + (mats.length ? resumoMats_(mats) : 'não foi utilizado material') + '\n\n' + empresa;
+
+  const msg = {
+    to: EMAIL_RETIRADA.PARA.join(','),
+    subject: EMAIL_RETIRADA.ASSUNTO + ' - ' + (c.nome || 'sem nome') + (codigo ? ' (cliente nº ' + codigo + ')' : '') + ' - OS nº ' + os.numero,
+    body: texto,
+    htmlBody: html,
+    name: empresa,
+  };
+  if (logo) msg.inlineImages = { logo: logo };
+  MailApp.sendEmail(msg);
+}
+
+/** Logo do e-mail: a configurada no sistema; se não houver, a logo padrão enviada pelo navegador */
+function logoBlob_(logoDoNavegador) {
+  const ler = (src) => {
+    src = String(src || '');
+    if (src.indexOf('drive:') === 0) {
+      const b = DriveApp.getFileById(src.slice(6)).getBlob();
+      return /svg/i.test(b.getContentType()) ? null : b; // SVG não aparece no Gmail
+    }
+    const m = src.match(/^data:(image\/(?:png|jpe?g|gif|webp));base64,(.+)$/);
+    return m ? Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], 'logo') : null;
+  };
+  try { const b = ler(config_().logoDataUrl); if (b) return b.setName('logo'); } catch (e) {}
+  try { if (String(logoDoNavegador || '').length < 2000000) { const b = ler(logoDoNavegador); if (b) return b.setName('logo'); } } catch (e) {}
+  return null;
+}
+
+function esc_(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function fmtDataHora_(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso) : Utilities.formatDate(d, 'America/Sao_Paulo', 'dd/MM/yyyy HH:mm');
+}
+function fmtDoc_(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return String(v || '');
+}
+function fmtTel_(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  return String(v || '');
+}
+function fmtCep_(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 8 ? d.slice(0, 5) + '-' + d.slice(5) : String(v || '');
+}
+
+/**
+ * Execute UMA vez pelo editor (▶ Executar) depois de colar este Code.gs:
+ * autoriza o envio de e-mails e mostra quantos ainda podem ser enviados hoje.
+ */
+function autorizarEmail() {
+  Logger.log('E-mail autorizado. Envios restantes hoje: ' + MailApp.getRemainingDailyQuota());
+  Logger.log('O e-mail "' + EMAIL_RETIRADA.ASSUNTO + '" vai para: ' + EMAIL_RETIRADA.PARA.join(', '));
 }
 
 /** OS que esta supervisora pode conferir */

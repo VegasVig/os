@@ -117,7 +117,7 @@
       if (!d.problema) erros.push('Problema em branco');
 
       let tipo = 'Manutenção';
-      if (d.tipo) { tipo = acharNaLista(d.tipo, VG.TIPOS_ATENDIMENTO); if (!tipo) { tipo = 'Outro'; avisos.push(`Tipo "${d.tipo}" → Outro`); } }
+      if (d.tipo) { tipo = acharNaLista(d.tipo, VG.TIPOS_ATENDIMENTO); if (!tipo) { tipo = 'Manutenção'; avisos.push(`Tipo "${d.tipo}" → Manutenção`); } }
       let prioridade = 'normal';
       if (d.prioridade) { prioridade = PRIOR[chaveTexto(d.prioridade)]; if (!prioridade) { prioridade = 'normal'; avisos.push(`Prioridade "${d.prioridade}" → Normal`); } }
       let equip = '';

@@ -258,7 +258,7 @@
       try {
         const salva = await call(action, Object.assign({ id }, extra || {}));
         this.put('ordens', salva);
-        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, corrigirMateriais: `Materiais da OS #${salva.numero} corrigidos` }[action];
+        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
         if (txt) { mem.atividades.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto: txt, osId: id, icon: 'check' }); mem.atividades = mem.atividades.slice(0, 150); }
         return salva;
       } catch (e) {
@@ -266,7 +266,7 @@
         throw e;
       } finally { pendentes--; atualizarIndicador(); }
     },
-    processarOS(id) { return this.acaoOS('processarOS', id); },
+    processarOS(id, extra) { return this.acaoOS('processarOS', id, extra); },
     reabrirOS(id, motivo) { return this.acaoOS('reabrirOS', id, { motivo }); },
     corrigirMateriais(id, dados) { return this.acaoOS('corrigirMateriais', id, dados); },
 

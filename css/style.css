@@ -350,6 +350,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .toolbar .field { flex: 1 1 150px; }
 .toolbar .field--search { flex: 2 1 260px; }
 .toolbar .field .input, .toolbar .field .select { min-height: 40px; font-size: 14px; }
+.toolbar__btns { display: flex; gap: .5rem; align-items: center; margin-bottom: 3px; }
+.toolbar__btns .btn { min-height: 40px; }
+.conf-err { color: var(--st-red); }
+.conf-actions .btn { white-space: normal; height: auto; min-height: 44px; text-align: center; }
 
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: .9rem; }
@@ -778,10 +782,12 @@ html.is-saving::after {
   .os-filtros-btn { display: inline-flex; align-self: flex-end; margin-bottom: 3px; }
   #os-toolbar { flex-wrap: nowrap; }
   #os-toolbar .field--search { flex: 1; min-width: 0; }
-  #os-toolbar > .field:not(.field--search), #os-toolbar > #f-clear { display: none; }
+  #os-toolbar > .field:not(.field--search), #os-toolbar > #f-btns { display: none; }
   #os-toolbar.is-open { flex-wrap: wrap; }
   #os-toolbar.is-open > .field:not(.field--search):not(.hidden) { display: flex; }
-  #os-toolbar.is-open > #f-clear { display: inline-flex; }
+  #os-toolbar.is-open > #f-btns { display: flex; flex: 1 1 100%; }
+  #os-toolbar.is-open > .field--search { flex: 1 1 calc(100% - 7.5rem); }
+  #os-toolbar.is-open > #f-btns #f-buscar { flex: 1; }
 }
 
 /* Materiais com valor (opcional) */

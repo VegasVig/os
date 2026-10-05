@@ -25,6 +25,15 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Troca de senha:** cada uma troca a própria em **Configurações → Alterar minha senha**.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
+## Novidades desta versão
+- **Tipos de atendimento:** Manutenção, Instalação, Preventiva, Venda e Retirada. Instalação continua com aba própria; os outros ficam na aba **Manutenção**. OS antigas com tipos que saíram da lista (Suporte, Corretiva, Vistoria, Outro) continuam com o tipo delas e aparecem no filtro.
+- **Descrição do problema:** tem uma setinha **Problema** com as opções em maiúsculas e em ordem alfabética. Ao escolher, o problema entra no início do texto e o campo de detalhes continua livre para completar.
+- **Filtro por data:** escolha **De** e **Até** e toque em **Buscar**. No celular, o botão fica no fim do painel **Filtros**.
+- **Fotos do técnico:** o botão **Tirar foto** abre direto a câmera do celular, não a galeria.
+- **Materiais pela supervisão:** com a OS **Realizada** (ou **Reaberta**), o quadro **Conferência da OS** tem o botão **Lançar materiais utilizados** / **Corrigir materiais utilizados**. A supervisora inclui, altera ou remove itens do técnico antes de processar. Tudo fica no histórico.
+- **E-mail "Cliente retirado":** numa OS do tipo **Retirada**, ao clicar em **Marcar como processada** o sistema envia um e-mail com a logo e os dados do cliente para financeiro2@vegasvigilancia.com.br, julianolopes47@gmail.com, controle.cftv@vegasvigilancia.com.br e gilduque@vegasvigilancia.com.br. Ele é enviado uma vez só, mesmo se a OS for reaberta e processada de novo. O envio (ou a falha) aparece na conferência e no histórico. Os endereços ficam em `EMAIL_RETIRADA`, no início do `Code.gs`.
+- **Para ativar o e-mail:** depois de colar o `Code.gs` novo e salvar, escolha a função **autorizarEmail** e clique em **▶ Executar**. Autorize o envio de e-mails. Depois publique uma **nova versão** em **Implantar → Gerenciar implantações**. O e-mail sai da conta Google dona do Apps Script.
+
 ## Materiais e conferência da OS
 - **Tipo de OS Venda:** aparece junto dos outros tipos, na aba **Manutenção**.
 - **Materiais para levar:** ao criar ou editar a OS, a supervisora informa código, material e quantidade do que o técnico deve levar.
@@ -34,7 +43,7 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Sem valores na OS:** a OS, a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. Valores lançados antes desta versão continuam guardados na planilha e aparecem apenas na exportação CSV de **Relatórios**.
 - **Conferência:** depois que o cliente assina, a OS fica em **Realizadas**. A supervisão abre a OS e confere, no quadro **Conferência da OS**, o que foi enviado e o que foi utilizado. Depois clica em **Marcar como processada**.
 - **Reabrir OS:** numa OS processada, o botão **Reabrir OS** pede o motivo.
-  - A OS fica **Reaberta** e permite **Corrigir materiais utilizados** e **Corrigir dados da OS**.
+  - A OS fica **Reaberta** e permite **Corrigir materiais utilizados** e **Corrigir dados da OS**. (Os materiais também podem ser lançados/corrigidos antes de processar, com a OS Realizada.)
   - Depois é só processar de novo. Nada é apagado: cada passo fica no histórico.
 - **Filtros na lista de OS:**
   - **Status:** Todas, Pendente, Realizada, Processada, Reaberta, mais os status de antes.
@@ -50,7 +59,7 @@ O sistema começa vazio, só com o usuário `supervisora`.
 3. **Técnico:**
    - Toca em **Técnico** e depois no próprio nome. Há uma busca para achar o nome mais rápido. Não precisa de senha.
    - Aparecem as OS dele, **ordenadas por urgência**: Urgente em vermelho, Alta em laranja, depois Normal e Baixa. As atrasadas ficam marcadas.
-   - Toca na OS para abrir, **Iniciar atendimento**, registrar o serviço e as fotos, assinar e **Finalizar**.
+   - Toca na OS para abrir, **Iniciar atendimento**, registrar o serviço e as fotos (o botão **Tirar foto** abre a câmera), assinar e **Finalizar**.
    - Depois toca em **Coletar assinatura do cliente**, e o cliente assina no celular do técnico.
    - Quando chega uma OS nova, o celular do técnico mostra um aviso em até 30 segundos. O botão **Atualizar** busca na hora.
 4. **Próximos acessos:** o celular lembra o técnico. Na próxima vez aparece **"Continuar como Fulano"**.

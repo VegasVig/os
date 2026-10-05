@@ -116,7 +116,7 @@
       <div class="photo-group">
         <h4>${label} <span class="faint" data-count="${g}">(${a.fotos[g].length}/${MAX_FOTOS})</span></h4>
         <div class="thumbs" data-thumbs="${g}"></div>
-        <input type="file" accept="image/*" multiple hidden data-file="${g}">
+        <input type="file" accept="image/*" capture="environment" hidden data-file="${g}">
       </div>`;
     return `
       ${notice('play', `Atendimento iniciado em <strong>${VG.fmtDateTime(a.inicio)}</strong>. As informações são salvas automaticamente. <span class="faint" data-saved></span>`)}
@@ -197,7 +197,7 @@
     }));
     mostrarMat();
 
-    // Fotos
+    // Fotos: o botão abre direto a câmera traseira do celular (capture="environment"), não a galeria
     ['antes', 'depois'].forEach((g) => {
       const box = VG.$(`[data-thumbs=${g}]`, body);
       const input = VG.$(`[data-file=${g}]`, body);
@@ -209,7 +209,7 @@
           <div class="thumb" style="position:relative">
             <img src="${src}" alt="Foto ${g} ${i + 1}" data-i="${i}" style="cursor:zoom-in">
             <button type="button" class="thumb__rm" data-i="${i}" aria-label="Remover foto">${VG.icon('x')}</button>
-          </div>`).join('') + (arr.length < MAX_FOTOS ? `<button type="button" class="thumb-add">${VG.icon('camera')}<span>Adicionar</span></button>` : '');
+          </div>`).join('') + (arr.length < MAX_FOTOS ? `<button type="button" class="thumb-add">${VG.icon('camera')}<span>Tirar foto</span></button>` : '');
         VG.$$('img[data-i]', box).forEach((im) => (im.onclick = () => VG.lightbox(arr[Number(im.dataset.i)], `Foto ${g}`)));
         VG.$$('.thumb__rm', box).forEach((b) => (b.onclick = async () => {
           if (!(await VG.confirm('Remover esta foto?', { title: 'Remover foto', ok: 'Remover', danger: true }))) return;
