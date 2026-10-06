@@ -13,6 +13,34 @@
   const SUGESTOES = ['Cabo UTP', 'Conector RJ45', 'Fonte 12V', 'Conector BNC', 'Balun', 'Bateria 12V 7Ah', 'Sensor infravermelho', 'Cabo coaxial', 'HD 1TB', 'Fio de cerca elétrica', 'Isolador', 'Caixa de passagem'];
   const FEITAS = ['aguardando_cliente', 'concluida', 'processada', 'reaberta'];
 
+  /* ---------- Valores (somente supervisão) ----------
+   * Os valores vêm da lista de Materiais (tela Materiais / CSV), pelo código.
+   * Técnico, cliente e PDF nunca recebem valores (o servidor nem envia).
+   */
+  const verValores = () => { const s = VG.Auth && VG.Auth.current(); return !!s && s.papel === 'supervisora' && !S().isPublic(); };
+  function precos() {
+    const map = {};
+    S().list('materiais').forEach((m) => { if (m && m.codigo) map[VG.norm(m.codigo)] = m; });
+    return map;
+  }
+  const precoDe = (mapa, m) => (m && m.codigo ? mapa[VG.norm(m.codigo)] || null : null);
+  const mult = (q, v) => (v == null || v === '' ? null : Math.round(Number(q || 0) * Number(v) * 100) / 100);
+  const reais = (v) => (v == null || v === '' ? '—' : VG.fmtMoney(v));
+  /** Totais (custo e venda) de uma lista de materiais pela lista de preços atual */
+  function totais(mats, mapa) {
+    mapa = mapa || precos();
+    let custo = 0, venda = 0, semPreco = 0;
+    (mats || []).forEach((m) => {
+      const p = precoDe(mapa, m);
+      const c = mult(m.quantidade, p && p.valor), v = mult(m.quantidade, p && p.valorVenda);
+      if (c == null && v == null) semPreco++;
+      custo += c || 0; venda += v || 0;
+    });
+    return { custo: Math.round(custo * 100) / 100, venda: Math.round(venda * 100) / 100, semPreco, n: (mats || []).length };
+  }
+  /** Lista de materiais ainda não chegou do servidor (Code.gs antigo) */
+  const servidorSemLista = () => !!S().semListaMateriais && S().semListaMateriais();
+
   /** Item limpo: só identificação e quantidade (o valor, se existir no banco, não é tocado aqui) */
   const limpar = (m) => ({
     id: m.id || VG.uid(), codigo: String(m.codigo || '').trim(), descricao: String(m.descricao || '').trim(),
@@ -47,7 +75,7 @@
       if (m && m.ativo === false) inativos.add(VG.norm(m.codigo));
       if (!m || m.ativo === false || !m.descricao) return;
       const k = VG.norm(m.codigo || m.descricao);
-      if (!map[k]) map[k] = { codigo: m.codigo || '', descricao: m.descricao, unidade: VG.unidadeDe(m.unidade), marca: m.marca || '', cadastro: true };
+      if (!map[k]) map[k] = { codigo: m.codigo || '', descricao: m.descricao, unidade: VG.unidadeDe(m.unidade), marca: m.marca || '', cadastro: true, valor: m.valor, valorVenda: m.valorVenda };
     });
     S().list('ordens').forEach((o) => {
       [].concat(o.materiaisLevar || [], (o.atendimento && o.atendimento.materiais) || []).forEach((m) => {
@@ -116,20 +144,37 @@
   }
 
   /** Tabela de leitura: Código | Material | Quantidade */
-  function tabelaHTML(mats, qtdLabel = 'Quantidade', vazio = 'Nenhum material registrado.') {
+  function tabelaHTML(mats, qtdLabel = 'Quantidade', vazio = 'Nenhum material registrado.', opts = {}) {
     if (!mats || !mats.length) return `<p class="faint" style="margin:0">${VG.esc(vazio)}</p>`;
+    if (opts.valores && verValores()) return tabelaValoresHTML(mats, qtdLabel);
     return `<div class="mat-table"><table class="materials materials--cod"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th></tr></thead><tbody>${mats.map((m) => `
       <tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  /** Supervisão: Código | Material | Qtd. | Valor un. | Venda un. | Total custo | Total venda (+ totais) */
+  function tabelaValoresHTML(mats, qtdLabel) {
+    const mapa = precos();
+    const t = totais(mats, mapa);
+    return `<div class="mat-table"><table class="materials materials--cod materials--val"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th>
+      <th class="r">Valor un.</th><th class="r">Venda un.</th><th class="r">Total custo</th><th class="r">Total venda</th></tr></thead><tbody>${mats.map((m) => {
+        const p = precoDe(mapa, m);
+        return `<tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${p ? '' : '<span class="sub faint">sem preço na lista</span>'}</td>
+          <td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td>
+          <td class="mono-num r">${reais(p && p.valor)}</td><td class="mono-num r">${reais(p && p.valorVenda)}</td>
+          <td class="mono-num r">${reais(mult(m.quantidade, p && p.valor))}</td><td class="mono-num r"><b>${reais(mult(m.quantidade, p && p.valorVenda))}</b></td></tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr><td colspan="5"><span class="faint">Valores da lista de Materiais atual${t.semPreco ? ` · ${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'}` : ''}</span></td>
+        <td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.custo))}</b></td><td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.venda))}</b></td></tr></tfoot></table></div>`;
+  }
+
   /** Bloco "Utilizou material" + materiais utilizados (técnico, cliente e supervisão) */
-  function utilizadosHTML(os) {
+  function utilizadosHTML(os, opts = {}) {
     const a = (os && os.atendimento) || {};
     const u = usou(os);
     return `<div class="mat-usou"><span class="kv__k">Utilizou material:</span> ${usouBadge(os)}</div>
       ${u === false ? '<p class="faint" style="margin:.4rem 0 0">Não foi utilizado material.</p>'
         : u === null ? '<p class="faint" style="margin:.4rem 0 0">O técnico ainda não informou os materiais utilizados.</p>'
-        : tabelaHTML(a.materiais, 'Qtd. utilizada')}`;
+        : tabelaHTML(a.materiais, 'Qtd. utilizada', undefined, opts)}`;
   }
 
   /* ---------- Editor (adicionar / remover itens) ---------- */
@@ -148,7 +193,9 @@
         <button type="button" class="btn" id="${p}-add">${VG.icon('plus')}<span>Adicionar</span></button>
       </div>
       <div class="mat-sug hidden" id="${p}-sugbox" role="listbox" aria-label="Materiais encontrados"></div>
-      ${temCadastro ? '' : `<p class="hint" style="margin:.5rem 0 0">Nenhum material cadastrado ainda: digite o código e o nome. A supervisão cadastra a lista em <b>Materiais</b>.</p>`}
+      ${temCadastro ? '' : servidorSemLista() && verValores()
+        ? `<div class="notice" style="margin-top:.6rem">${VG.icon('alert')}<div>A lista de materiais não veio do servidor: o <b>Code.gs</b> publicado ainda é o antigo. Cole o Code.gs novo no Apps Script e publique uma <b>nova versão</b> em Implantar → Gerenciar implantações.</div></div>`
+        : `<p class="hint" style="margin:.5rem 0 0">Nenhum material cadastrado ainda: digite o código e o nome. ${verValores() ? 'Importe a lista em <a href="#/materiais">Materiais</a> → Importar / atualizar CSV.' : 'A supervisão cadastra a lista em <b>Materiais</b>.'}</p>`}
       <ul class="mat-list" id="${p}-list"></ul>`;
   }
 
@@ -160,6 +207,7 @@
     const $ = (id) => VG.$('#' + p + '-' + id, root);
     const cod = $('cod'), desc = $('desc'), qtd = $('qtd'), un = $('un'), list = $('list');
     const idx = indice();
+    const valores = verValores();
     const porCodigo = (c) => { const n = VG.norm(c); const r = n && idx.find((x) => x.cod === n); return r && r.c; };
     const porDesc = (d) => { const n = VG.norm(d); const r = n && idx.find((x) => x.desc === n); return r && r.c; };
     const setUn = (u) => {
@@ -205,6 +253,7 @@
           <button type="button" class="mat-sug__item" role="option" id="${p}-sug-${i}" data-i="${i}" tabindex="-1">
             <span class="mat-sug__cod">${c.codigo ? destacar(c.codigo, q) : '—'}</span>
             <span class="mat-sug__txt"><b>${destacar(c.descricao, q)}</b>${detalhe(c) ? `<small>${VG.esc(detalhe(c))}</small>` : ''}</span>
+            ${valores && (c.valor != null || c.valorVenda != null) ? `<span class="mat-sug__val"><b>${VG.esc(reais(c.valorVenda))}</b><small>custo ${VG.esc(reais(c.valor))}</small></span>` : ''}
           </button>`).join('') + (todos.length > achados.length ? `<div class="mat-sug__mais">Mais ${todos.length - achados.length} resultados — continue digitando para filtrar.</div>` : '')
         : `<div class="mat-sug__vazio">Nenhum material com “${VG.esc(q)}”. Você pode digitar o material mesmo assim.</div>`;
       box.classList.remove('hidden');
@@ -240,9 +289,18 @@
 
     const draw = () => {
       const itens = getItens();
+      const mapa = valores ? precos() : {};
+      const valorItem = (m) => {
+        if (!valores) return '';
+        const p = precoDe(mapa, m);
+        if (!p || (p.valor == null && p.valorVenda == null)) return '<span class="mat-val">sem preço na lista</span>';
+        return `<span class="mat-val">${VG.esc(reais(p.valorVenda))} un. · total ${VG.esc(reais(mult(m.quantidade, p.valorVenda)))}</span><span class="mat-val">custo ${VG.esc(reais(mult(m.quantidade, p.valor)))}</span>`;
+      };
+      const t = valores && itens.length ? totais(itens, mapa) : null;
       list.innerHTML = itens.length ? itens.map((m) => `
-        <li>${VG.icon('box')}<span>${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</b>
+        <li>${VG.icon('box')}<span>${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}${valorItem(m)}</b>
           <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
+          + (t ? `<li class="mat-total"><span>Total (${t.n} ${t.n === 1 ? 'item' : 'itens'})${t.semPreco ? ` <small class="faint">· ${t.semPreco} sem preço</small>` : ''}</span><b>${VG.esc(VG.fmtMoney(t.venda))}<span class="mat-val">custo ${VG.esc(VG.fmtMoney(t.custo))}</span></b></li>` : '')
         : `<li class="faint" style="justify-content:center">${VG.esc(opts.vazio || 'Nenhum material adicionado.')}</li>`;
       VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => {
         const arr = getItens();
@@ -302,5 +360,5 @@
   /** "MAT-001 Sensor (4 unidade(s)); Cabo UTP (10 metro(s))" — usado no histórico */
   const resumo = (mats) => (mats || []).map((m) => `${m.codigo ? m.codigo + ' ' : ''}${m.descricao} (${m.quantidade}${m.unidade ? ' ' + m.unidade : ''})`).join('; ');
 
-  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor };
+  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor, totais, verValores };
 })();

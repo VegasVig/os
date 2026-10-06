@@ -1095,3 +1095,10 @@ html.is-saving::after {
 /* OS reaberta pela supervisão para o técnico completar */
 .os-card__dev { color: var(--st-orange); }
 .os-card__dev .icon { color: var(--st-orange); }
+/* Valores dos materiais (somente supervisão) */
+.mat-sug__val { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; flex: none; padding-left: .6rem; }
+.mat-sug__val b { font-family: var(--font-display); font-weight: 600; font-size: .88rem; white-space: nowrap; }
+.mat-sug__val small { font-size: .72rem; color: var(--text-3); white-space: nowrap; }
+.materials--val th.r, .materials--val td.r { text-align: right; white-space: nowrap; }
+.materials--val .sub { display: block; font-size: .74rem; }
+.materials--val tfoot td { border-top: 1px solid var(--line-strong); }

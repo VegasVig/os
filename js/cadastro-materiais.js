@@ -66,7 +66,7 @@
             <button class="btn btn-primary" id="mc-new">${VG.icon('plus')}<span>Novo material</span></button>
           </div>
         </div>
-        <div class="notice notice--info">${VG.icon('info')}<div>Os valores ficam só nesta tela. Na OS, para o técnico, no link do cliente e no PDF aparecem apenas <b>código, material e quantidade</b>. ${ativos ? `<b>${ativos}</b> ${ativos === 1 ? 'material ativo' : 'materiais ativos'} na busca.` : ''}</div></div>
+        <div class="notice notice--info">${VG.icon('info')}<div>Os valores aparecem só para a supervisão (aqui, na busca e na OS). Para o técnico, no link do cliente e no PDF aparecem apenas <b>código, material e quantidade</b>. ${ativos ? `<b>${ativos}</b> ${ativos === 1 ? 'material ativo' : 'materiais ativos'} na busca.` : ''}</div></div>
         <section class="panel">
           <div class="toolbar">
             <div class="field field--search"><label for="mc-q">Pesquisar</label>

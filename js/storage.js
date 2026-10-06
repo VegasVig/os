@@ -25,7 +25,8 @@
     'devolucao', 'devolucoes', 'assinaturasAnteriores'];
 
   let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: {}, rev: 0 };
-  let publico = null; // { numero, t } quando a tela foi aberta por link exclusivo
+  let publico = null;
+  let semLista = false; // { numero, t } quando a tela foi aberta por link exclusivo
   const memLocal = {};
 
   /* ---------- chamada ao servidor ---------- */
@@ -172,6 +173,7 @@
 
     /* ---------- estado ---------- */
     load(snap) {
+      semLista = snap.materiais === undefined; // Code.gs antigo não envia a lista de materiais
       mem = {
         users: snap.users || [], clientes: snap.clientes || [], tecnicos: snap.tecnicos || [],
         ordens: snap.ordens || [], atividades: snap.atividades || [], materiais: snap.materiais || [],
@@ -180,6 +182,7 @@
     },
     clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: mem.config || {}, rev: 0 }; },
     rev() { return mem.rev; },
+    semListaMateriais: () => semLista,
     setRev(r) { mem.rev = r; },
     setPublic(link) { publico = link; },
     isPublic() { return !!publico; },

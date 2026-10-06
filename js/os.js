@@ -645,14 +645,14 @@
               <div class="panel__body"><p class="text-block">${VG.esc(os.problema)}</p></div></section>
 
             <section class="panel"><div class="panel__head"><h3>${VG.icon('box')}Materiais para levar</h3><span class="faint" style="font-size:.8rem">Separados pela supervisão</span></div>
-              <div class="panel__body">${VG.Mat.tabelaHTML(os.materiaisLevar, 'Qtd. enviada', 'Nenhum material separado para esta OS.')}</div></section>
+              <div class="panel__body">${VG.Mat.tabelaHTML(os.materiaisLevar, 'Qtd. enviada', 'Nenhum material separado para esta OS.', { valores: true })}</div></section>
 
             <section class="panel"><div class="panel__head"><h3>${VG.icon('wrench')}Atendimento técnico</h3>
               <span class="faint" style="font-size:.8rem">${a.inicio ? `Início ${VG.fmtDateTime(a.inicio)}${a.fim ? ' · Fim ' + VG.fmtDateTime(a.fim) : ''}` : 'Não iniciado'}</span></div>
               <div class="panel__body stack">
                 <div><div class="kv__k">Diagnóstico</div><p class="text-block">${VG.esc(a.diagnostico || '—')}</p></div>
                 <div><div class="kv__k">Serviço executado</div><p class="text-block">${VG.esc(a.servico || '—')}</p></div>
-                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os)}</div>
+                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os, { valores: true })}</div>
                 <div><div class="kv__k">Observações do técnico</div><p class="text-block">${VG.esc(a.observacoes || '—')}</p></div>
                 ${os.assinaturaCliente && os.assinaturaCliente.observacoes ? `<div><div class="kv__k">Observações do cliente</div><p class="text-block">${VG.esc(os.assinaturaCliente.observacoes)}</p></div>` : ''}
               </div></section>
@@ -714,6 +714,7 @@
           <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
           <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
           <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
+          ${nUsados ? (() => { const t = VG.Mat.totais(os.atendimento.materiais); return `<div class="conf-row"><span>Valor dos materiais utilizados</span><b>${VG.esc(VG.fmtMoney(t.venda))} <small class="faint">custo ${VG.esc(VG.fmtMoney(t.custo))}</small></b></div>${t.semPreco ? `<div class="conf-row"><span></span><small class="faint">${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'} na lista de Materiais</small></div>` : ''}`; })() : ''}
           ${retirada ? `<div class="conf-row"><span>E-mail "Cliente retirado"</span>${em.enviadoEm ? `<b>Enviado em ${VG.fmtDateTime(em.enviadoEm)}</b>` : em.erro ? `<b class="conf-err">Não enviado</b>` : '<b>Será enviado ao processar</b>'}</div>
             ${em.erro && !em.enviadoEm ? `<div class="notice">${VG.icon('alert')}<div>O e-mail de cliente retirado não foi enviado: ${VG.esc(em.erro)}</div></div>` : ''}` : ''}
           ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}

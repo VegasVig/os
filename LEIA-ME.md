@@ -26,6 +26,13 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **Valores dos materiais para a supervisão:** com a lista importada em **Materiais**, a supervisão vê os valores (pelo código do material):
+  - na busca, ao lado de cada material: valor de venda e custo;
+  - na lista de itens adicionados (Materiais para levar e Lançar/Corrigir materiais utilizados): valor unitário, total de cada item e total geral (venda e custo);
+  - no detalhe da OS, nas tabelas de materiais, e no quadro **Conferência da OS** (valor dos materiais utilizados).
+  - Os valores são os da lista de Materiais **atual**: atualizou a lista, os valores mostrados mudam. Item sem código na lista aparece como "sem preço".
+  - Técnico, link do cliente e PDF continuam **sem valores**; o servidor nem envia os preços para eles.
+- **Aviso de servidor antigo:** se a busca mostrar "A lista de materiais não veio do servidor", o Apps Script ainda está com o Code.gs antigo. Cole o novo e publique uma **nova versão**.
 - **Aba Processadas:** na lista de OS, as abas agora são **A realizar**, **Realizadas** (assinadas pelo cliente, esperando a conferência, incluindo as reabertas) e **Processadas** (já conferidas). O filtro de status **Processada** leva direto para essa aba.
 - **Reabrir para o técnico (antes de processar):** se o técnico esqueceu algo (material, foto, descrição), abra a OS e, no quadro **Conferência da OS**, toque em **Reabrir para o técnico**. Vale para OS **Aguardando cliente**, **Realizada** ou **Reaberta**.
   - Escreva o que ele precisa completar. O técnico vê o aviso no topo da OS e na lista dele ("Completar OS"), e o celular avisa em até 30 segundos.
@@ -55,7 +62,7 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Utilizou algum material?:** para finalizar, o técnico responde **SIM** ou **NÃO**.
   - Com **SIM**, ele informa os materiais usados e a quantidade. Pode tocar num material separado pela supervisão e ajustar a quantidade.
   - Com **NÃO**, a OS registra "Não foi utilizado material".
-- **Sem valores na OS:** a OS, a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. Valores lançados antes desta versão continuam guardados na planilha e aparecem apenas na exportação CSV de **Relatórios**.
+- **Sem valores para técnico e cliente:** a tela do técnico, o link do cliente e o PDF mostram só **código, material e quantidade**. A supervisão vê os valores da lista de Materiais. Valores lançados antes desta versão continuam guardados na planilha e aparecem apenas na exportação CSV de **Relatórios**.
 - **Conferência:** depois que o cliente assina, a OS fica em **Realizadas**. A supervisão abre a OS e confere, no quadro **Conferência da OS**, o que foi enviado e o que foi utilizado. Depois clica em **Marcar como processada**.
 - **Reabrir OS:** numa OS processada, o botão **Reabrir OS** pede o motivo.
   - A OS fica **Reaberta** e permite **Corrigir materiais utilizados** e **Corrigir dados da OS**. (Os materiais também podem ser lançados/corrigidos antes de processar, com a OS Realizada.)
