@@ -26,6 +26,13 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **Aba Processadas:** na lista de OS, as abas agora são **A realizar**, **Realizadas** (assinadas pelo cliente, esperando a conferência, incluindo as reabertas) e **Processadas** (já conferidas). O filtro de status **Processada** leva direto para essa aba.
+- **Reabrir para o técnico (antes de processar):** se o técnico esqueceu algo (material, foto, descrição), abra a OS e, no quadro **Conferência da OS**, toque em **Reabrir para o técnico**. Vale para OS **Aguardando cliente**, **Realizada** ou **Reaberta**.
+  - Escreva o que ele precisa completar. O técnico vê o aviso no topo da OS e na lista dele ("Completar OS"), e o celular avisa em até 30 segundos.
+  - A OS volta para **Em atendimento** com tudo o que ele já registrou. Ele completa, assina de novo e finaliza.
+  - **Assinatura do cliente:** escolha **Manter** (padrão; ao finalizar, a OS volta direto para **Realizadas**) ou **O cliente assina de novo** (no celular do técnico ou pelo link). A assinatura antiga fica guardada.
+  - Enquanto está com o técnico, a OS não pode ser cancelada. Tudo fica no histórico e na conferência.
+  - OS já **Processada**: use **Reabrir OS** primeiro e depois **Reabrir para o técnico**.
 - **Materiais e valores (menu Cadastros → Materiais):** cadastro com código, material, marca, unidade, valor e valor de venda.
   - **Importar / atualizar CSV:** o **código** é a chave. Código que já existe tem nome, marca, unidade e valores atualizados; código novo é incluído. Antes de confirmar, a tela mostra o que é novo, o que muda (valor antigo → novo) e as linhas com erro.
   - **Desativar os que não estão no arquivo:** opção desmarcada por padrão. Os materiais desativados saem da busca, mas não são apagados.

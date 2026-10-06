@@ -1092,3 +1092,6 @@ html.is-saving::after {
 /* dentro de janelas (ex.: Corrigir materiais utilizados) a lista entra no fluxo, logo abaixo da linha,
    para não empurrar o campo digitado para fora da área visível */
 .modal .mat-sug { position: static; grid-column: 1 / -1; margin-top: .1rem; max-height: min(280px, 40vh); }
+/* OS reaberta pela supervisão para o técnico completar */
+.os-card__dev { color: var(--st-orange); }
+.os-card__dev .icon { color: var(--st-orange); }

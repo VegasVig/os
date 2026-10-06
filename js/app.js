@@ -412,6 +412,7 @@
       const rev = await VG.Store.call('rev', {}, { silencioso: true });
       if (rev === VG.Store.rev() && !forcar) return;
       const antes = new Set(VG.Store.list('ordens').map((o) => o.id));
+      const devAntes = new Set(VG.Store.list('ordens').filter((o) => o.devolucao).map((o) => o.id + '|' + o.devolucao.em));
       await VG.Auth.restore();
       if (sess.papel === 'tecnico') {
         const novas = VG.Store.list('ordens').filter((o) => !antes.has(o.id) && o.tecnicoId === sess.tecnicoId && !VG.isConcluida(o.status));
@@ -420,6 +421,12 @@
           VG.toast(novas.length === 1 ? `Nova OS #${novas[0].numero}${urg ? ' — URGENTE' : ''}: ${novas[0].cliente.nome}` : `${novas.length} novas OS recebidas${urg ? ' (há urgente)' : ''}.`, urg ? 'warn' : 'info', 8000);
           try { navigator.vibrate && navigator.vibrate(urg ? [200, 100, 200] : 150); } catch (e) {}
         }
+        // OS reaberta pela supervisão para completar
+        VG.Store.list('ordens').filter((o) => o.devolucao && o.tecnicoId === sess.tecnicoId && antes.has(o.id) && !devAntes.has(o.id + '|' + o.devolucao.em))
+          .forEach((o) => {
+            VG.toast(`OS #${o.numero} reaberta pela supervisão: ${o.devolucao.motivo}`, 'warn', 9000);
+            try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
+          });
       }
       if (!document.querySelector('.modal-backdrop, .sigpad') && VG.Store.pendentes() === 0) { shellMounted = false; route(); }
     } catch (e) {

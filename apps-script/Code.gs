@@ -57,7 +57,10 @@ const SUPERVISORAS = [
 /** OS já assinadas pelo cliente (conferidas ou não pela supervisão) */
 const CONCLUIDAS_ = ['concluida', 'processada', 'reaberta'];
 /** Campos da conferência: só mudam pelas ações processarOS / reabrirOS / corrigirMateriais */
-const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias', 'emailRetirada'];
+const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias', 'emailRetirada',
+  'devolucao', 'devolucoes', 'assinaturasAnteriores'];
+/** OS que a supervisão pode devolver ao técnico para completar (antes de processar) */
+const PODE_DEVOLVER_ = ['aguardando_cliente', 'concluida', 'reaberta'];
 
 /**
  * OS do tipo RETIRADA: quando a supervisão marca como PROCESSADA, o sistema
@@ -571,6 +574,49 @@ const ACOES = {
     });
   },
 
+  /**
+   * Antes de processar: devolve a OS ao técnico para completar o que faltou
+   * (material, foto, descrição…). A OS volta para EM ATENDIMENTO no celular dele.
+   * • novaAssinaturaCliente = false (padrão): a assinatura do cliente é mantida e,
+   *   quando o técnico finalizar de novo, a OS volta direto para Realizada.
+   * • novaAssinaturaCliente = true: a assinatura do cliente é guardada no histórico
+   *   e o cliente assina de novo (no celular do técnico ou pelo link).
+   * A assinatura do técnico sempre é refeita. Nada é apagado.
+   */
+  devolverTecnico(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    const motivo = String(req.motivo || '').trim().slice(0, 500);
+    if (!motivo) throw new Error('Informe o que o técnico precisa completar.');
+    return comLock_(() => {
+      const os = osDaSupervisao_(s, req.id);
+      if (os.status === 'processada') throw new Error('Esta OS já foi processada. Use Reabrir OS primeiro e depois Reabrir para o técnico.');
+      if (PODE_DEVOLVER_.indexOf(os.status) < 0) throw new Error('Só é possível reabrir para o técnico uma OS finalizada por ele e ainda não processada.');
+      const tec = ler_('tecnicos').find((t) => t.id === os.tecnicoId);
+      if (!tec) throw new Error('Esta OS não tem técnico responsável. Escolha o técnico antes de reabrir.');
+      if (tec.ativo === false) throw new Error('O técnico ' + tec.nome + ' está inativo. Reative o cadastro dele ou troque o técnico da OS.');
+      const agora = agora_();
+      const manter = req.novaAssinaturaCliente !== true && !!(os.assinaturaCliente && os.assinaturaCliente.imagem);
+      os.assinaturasAnteriores = (os.assinaturasAnteriores || []).concat([{
+        arquivadaEm: agora, motivo: motivo, tecnico: os.assinaturaTecnico || null, cliente: manter ? null : (os.assinaturaCliente || null),
+      }]).slice(-10);
+      os.devolucao = {
+        em: agora, por: s.nome, porId: s.userId, motivo: motivo, statusAnterior: os.status,
+        manterAssinaturaCliente: manter, fimAnterior: (os.atendimento && os.atendimento.fim) || null,
+      };
+      os.assinaturaTecnico = null;
+      if (!manter) os.assinaturaCliente = null;
+      if (os.atendimento) os.atendimento.fim = null;
+      os.status = 'em_atendimento';
+      conferencia_(os, 'devolvida', s, motivo);
+      hist_(os, 'OS reaberta para o técnico completar. Motivo: ' + motivo + (manter ? ' (assinatura do cliente mantida)' : ' (o cliente vai assinar de novo)'), s.nome);
+      os.atualizadoEm = agora;
+      upsert_('ordens', os);
+      registrarAtividade_('OS #' + os.numero + ' reaberta para o técnico ' + String(tec.nome || '').split(' ')[0], os.id, 'refresh');
+      bump_();
+      return os;
+    });
+  },
+
   /** OS realizada ou reaberta: a supervisão lança/corrige o "utilizou material" e os materiais utilizados */
   corrigirMateriais(req) {
     const s = sessao_(req, PAPEIS_SUP);
@@ -671,6 +717,16 @@ function mesclarLink_(atual, novo, papel) {
     }
     if (novo.assinaturaTecnico) atual.assinaturaTecnico = novo.assinaturaTecnico;
     atual.status = novo.status;
+    // OS reaberta pela supervisão: ao finalizar de novo, encerra a devolução
+    if (novo.status === 'aguardando_cliente' && atual.devolucao) {
+      const d = atual.devolucao;
+      atual.devolucoes = (atual.devolucoes || []).concat([Object.assign({}, d, { corrigidaEm: agora_() })]).slice(-20);
+      delete atual.devolucao;
+      if (d.manterAssinaturaCliente && atual.assinaturaCliente && atual.assinaturaCliente.imagem) {
+        atual.status = 'concluida'; // assinatura do cliente mantida: volta direto para conferência
+        atual._corrigida = true;
+      }
+    }
   } else if (papel === 'cliente') {
     if (st !== 'aguardando_cliente') throw new Error('Esta OS não está aguardando assinatura.');
     if (novo.status !== 'concluida' || !(novo.assinaturaCliente && novo.assinaturaCliente.imagem && novo.assinaturaCliente.nome)) {
@@ -704,7 +760,7 @@ function mesclarSupervisao_(atual, novo) {
   // conferência (processada/reaberta): só muda pelas ações próprias
   CAMPOS_CONF_.forEach((k) => { if (atual[k] !== undefined) novo[k] = atual[k]; else delete novo[k]; });
   novo.materiaisLevar = limparMats_(novo.materiaisLevar);
-  if (CONCLUIDAS_.indexOf(atual.status) >= 0 || atual.status === 'cancelada') novo.status = atual.status;
+  if (CONCLUIDAS_.indexOf(atual.status) >= 0 || atual.status === 'cancelada' || atual.devolucao) novo.status = atual.status;
   else if (CONCLUIDAS_.indexOf(novo.status) >= 0 && novo.status !== 'concluida') novo.status = atual.status;
   else if (novo.status !== 'cancelada' && (ordem[novo.status] || 0) < (ordem[atual.status] || 0)) novo.status = atual.status;
   // histórico: une as duas versões sem duplicar
@@ -721,6 +777,13 @@ function mesclarSupervisao_(atual, novo) {
 function logTransicao_(os, antes) {
   if (os.status === antes) return;
   const pnome = String(os.tecnicoNome || 'Técnico').split(' ')[0];
+  if (os._corrigida) {
+    delete os._corrigida;
+    hist_(os, 'Técnico completou a OS reaberta. Assinatura do cliente mantida; OS de volta para conferência.', os.tecnicoNome || 'Técnico');
+    upsert_('ordens', os);
+    registrarAtividade_('Técnico ' + pnome + ' completou a OS #' + os.numero + ' reaberta', os.id, 'check');
+    return;
+  }
   if (os.status === 'em_atendimento') registrarAtividade_('Técnico ' + pnome + ' iniciou a OS #' + os.numero, os.id, 'play');
   if (os.status === 'aguardando_cliente') registrarAtividade_('OS #' + os.numero + ' finalizada', os.id, 'check');
   if (os.status === 'concluida') {

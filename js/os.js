@@ -17,7 +17,7 @@
   const SITUACOES = [
     { value: 'pendente', label: 'Pendente', sub: 'realizar' },
     { value: 'realizada', label: 'Realizada', sub: 'realizadas' },
-    { value: 'processada', label: 'Processada', sub: 'realizadas' },
+    { value: 'processada', label: 'Processada', sub: 'processadas' },
     { value: 'reaberta', label: 'Reaberta', sub: 'realizadas' },
   ];
   const subDoStatus = (st) => (!st ? null : (SITUACOES.find((x) => x.value === st) || {}).sub || (st === 'concluida' ? 'realizadas' : st === 'cancelada' ? 'canceladas' : 'realizar'));
@@ -35,7 +35,10 @@
   let aba = lerAba('vegas_os_aba', 'manutencao');
   let sub = lerAba('vegas_os_sub', 'realizar');
   const grupoTipo = (o) => (VG.norm(o.tipo) === 'instalacao' ? 'instalacao' : 'manutencao');
-  const grupoStatus = (o) => (VG.isConcluida(o.status) ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
+  // Realizadas = assinadas e esperando conferência (inclui reabertas); Processadas = conferidas pela supervisão
+  const grupoStatus = (o) => (o.status === 'processada' ? 'processadas' : VG.isConcluida(o.status) ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
+  /** OS reaberta pela supervisão para o técnico completar */
+  const devolvida = (o) => !!(o && o.devolucao) && o.status === 'em_atendimento';
   const PESO = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
   const COR_PRIO = { urgente: 'red', alta: 'orange', normal: 'blue', baixa: 'gray' };
   const dot = (p) => { const k = COR_PRIO[p] ? p : 'normal'; return `<span class="os-dot os-dot--${COR_PRIO[k]}${k === 'urgente' ? ' os-dot--pulse' : ''}" title="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}" aria-label="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}"></span>`; };
@@ -173,7 +176,8 @@
       </div>
       <div class="os-tabs__sub" role="tablist">
         <button role="tab" class="os-sub ${sub === 'realizar' ? 'is-on' : ''}" data-sub="realizar">A realizar <em>${contaSub('realizar')}</em></button>
-        <button role="tab" class="os-sub ${sub === 'realizadas' ? 'is-on' : ''}" data-sub="realizadas">Realizadas <em>${contaSub('realizadas')}</em></button>
+        <button role="tab" class="os-sub ${sub === 'realizadas' ? 'is-on' : ''}" data-sub="realizadas" title="Assinadas pelo cliente, esperando a conferência">Realizadas <em>${contaSub('realizadas')}</em></button>
+        <button role="tab" class="os-sub ${sub === 'processadas' ? 'is-on' : ''}" data-sub="processadas" title="Conferidas e marcadas como processadas">Processadas <em>${contaSub('processadas')}</em></button>
         ${nCanc ? `<button role="tab" class="os-sub os-sub--faint ${sub === 'canceladas' ? 'is-on' : ''}" data-sub="canceladas">Canceladas <em>${nCanc}</em></button>` : ''}
         <span class="os-legend">${['urgente', 'alta', 'normal', 'baixa'].map((p) => `<span>${dot(p)}${VG.PRIORIDADES[p].label}</span>`).join('')}</span>
       </div>`;
@@ -186,7 +190,7 @@
     }));
     const tpBox = VG.$('#f-tipo-box', el); if (tpBox) tpBox.classList.toggle('hidden', aba === 'instalacao');
     // o período filtra pela data que aparece na lista desta aba
-    const qual = { realizar: 'Prevista', realizadas: 'Realizada', canceladas: 'Cancelada' }[sub] || '';
+    const qual = { realizar: 'Prevista', realizadas: 'Realizada', processadas: 'Realizada', canceladas: 'Cancelada' }[sub] || '';
     const lbDe = VG.$('#f-de-lb', el), lbAte = VG.$('#f-ate-lb', el);
     if (lbDe) lbDe.textContent = qual ? `${qual} de` : 'De';
     if (lbAte) lbAte.textContent = qual ? `${qual} até` : 'Até';
@@ -206,8 +210,8 @@
         ? VG.empty('os', 'Nenhuma OS criada', 'Crie a primeira ordem de serviço para começar.', `<a class="btn btn-primary" href="#/os/nova">${VG.icon('plus')}<span>Nova ordem de serviço</span></a>`)
         : filtradas.length !== all.length && doTipo.length === 0
           ? VG.empty('search', 'Nenhuma OS encontrada', 'Nenhuma ordem corresponde aos filtros. Ajuste a pesquisa ou limpe os filtros.')
-          : VG.empty(sub === 'realizar' ? 'check' : 'os', sub === 'realizar' ? `Nenhuma ${nomeAba} a realizar` : sub === 'realizadas' ? `Nenhuma ${nomeAba} realizada` : 'Nenhuma OS cancelada',
-              sub === 'realizar' ? 'Tudo em dia por aqui.' : 'Quando uma OS for concluída, ela aparece aqui.');
+          : VG.empty(sub === 'realizar' ? 'check' : 'os', sub === 'realizar' ? `Nenhuma ${nomeAba} a realizar` : sub === 'realizadas' ? `Nenhuma ${nomeAba} esperando conferência` : sub === 'processadas' ? `Nenhuma ${nomeAba} processada` : 'Nenhuma OS cancelada',
+              sub === 'realizar' ? 'Tudo em dia por aqui.' : sub === 'processadas' ? 'Quando a supervisão conferir e marcar uma OS como processada, ela aparece aqui.' : 'Quando uma OS for concluída, ela aparece aqui.');
       return;
     }
 
@@ -220,9 +224,9 @@
       const [, mm, dd] = o.prazoData.split('-');
       return `<span class="d-long">${VG.esc(txt)}</span><span class="d-short">${dd}/${mm}</span>`;
     };
-    const detalhe = (o) => [aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
+    const detalhe = (o) => [devolvida(o) ? 'Reaberta para o técnico' : '', aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
 
-    const real = sub === 'realizadas';
+    const real = sub === 'realizadas' || sub === 'processadas';
     const numHTML = (o) => {
       if (!real) return `#${o.numero}`;
       const cc = codCliente(o);
@@ -242,7 +246,7 @@
               <button class="btn btn-ghost btn-icon" data-act="edit" title="Editar" aria-label="Editar" ${FINAIS.includes(o.status) ? 'disabled' : ''}>${VG.icon('edit')}</button>
               <button class="btn btn-ghost btn-icon" data-act="pdf" title="Gerar PDF" aria-label="Gerar PDF">${VG.icon('pdf')}</button>
               <button class="btn btn-ghost btn-icon" data-act="link" title="Copiar link" aria-label="Copiar link" ${o.status === 'cancelada' ? 'disabled' : ''}>${VG.icon('link')}</button>
-              <button class="btn btn-ghost btn-icon" data-act="cancel" title="Cancelar OS" aria-label="Cancelar OS" ${SEM_CANCELAR.includes(o.status) ? 'disabled' : ''}>${VG.icon('ban')}</button>
+              <button class="btn btn-ghost btn-icon" data-act="cancel" title="Cancelar OS" aria-label="Cancelar OS" ${SEM_CANCELAR.includes(o.status) || devolvida(o) ? 'disabled' : ''}>${VG.icon('ban')}</button>
             </span>
           </div>`).join('')}
       </div>
@@ -594,7 +598,7 @@
     if (!os) { el.innerHTML = VG.empty('alert', 'OS não encontrada', 'Ela pode ter sido removida.', '<a class="btn" href="#/os">Voltar para a lista</a>'); return; }
     const c = os.cliente || {}, e = os.equipamento || {}, a = os.atendimento || {};
     const final = FINAIS.includes(os.status);
-    const semCancelar = SEM_CANCELAR.includes(os.status);
+    const semCancelar = SEM_CANCELAR.includes(os.status) || devolvida(os);
     const reaberta = os.status === 'reaberta';
     const cc = codCliente(os);
     el.innerHTML = `
@@ -620,6 +624,7 @@
         </section>
 
         ${os.status === 'cancelada' ? `<div class="notice">${VG.icon('ban')}<div><strong>OS cancelada</strong> em ${VG.fmtDateTime(os.canceladaEm || (os.historico.slice(-1)[0] || {}).dataHora)}. Motivo: ${VG.esc(os.canceladaMotivo || '—')}</div></div>` : ''}
+        ${devolvida(os) ? `<div class="notice">${VG.icon('refresh')}<div><strong>Reaberta para o técnico</strong> em ${VG.fmtDateTime(os.devolucao.em)}${os.devolucao.por ? ' por ' + VG.esc(os.devolucao.por) : ''}. O que completar: ${VG.esc(String(os.devolucao.motivo || '—').replace(/[.\s]+$/, ''))}.<br>A OS está de volta no celular de ${VG.esc(os.tecnicoNome || 'técnico')}. ${os.devolucao.manterAssinaturaCliente ? 'A assinatura do cliente foi mantida: quando o técnico finalizar, a OS volta direto para <b>Realizadas</b>.' : 'Quando o técnico finalizar, o cliente assina de novo (no celular do técnico ou pelo link).'}</div></div>` : ''}
         ${os.status === 'aguardando_cliente' ? `<div class="notice notice--info">${VG.icon('pen')}<div>Atendimento finalizado pelo técnico. Falta a assinatura do cliente, que o técnico coleta no próprio celular. Se precisar, também é possível enviar o <button class="btn btn-ghost btn-sm" id="d-link-cli" style="display:inline-flex;height:auto;padding:0 .2rem;text-decoration:underline">link do cliente</button>.</div></div>` : ''}
 
         <div class="detail-grid">
@@ -687,6 +692,8 @@
 
   /* ---------- CONFERÊNCIA DA SUPERVISÃO (processar / reabrir) ---------- */
   const PODE_PROCESSAR = ['concluida', 'reaberta'];
+  /** Antes de processar, a OS pode voltar para o técnico completar o que esqueceu */
+  const PODE_DEVOLVER = ['aguardando_cliente', 'concluida', 'reaberta'];
   const ehRetirada = (os) => VG.norm(os && os.tipo) === 'retirada';
   /** Quem recebe o e-mail "Cliente retirado" (o envio é feito pelo servidor, no Code.gs) */
   const EMAILS_RETIRADA = ['financeiro2@vegasvigilancia.com.br', 'julianolopes47@gmail.com', 'controle.cftv@vegasvigilancia.com.br', 'gilduque@vegasvigilancia.com.br'];
@@ -696,7 +703,7 @@
     const nLevar = (os.materiaisLevar || []).length, nUsados = ((os.atendimento && os.atendimento.materiais) || []).length;
     const itens = (n) => `${n} ${n === 1 ? 'item' : 'itens'}`;
     const hist = (os.conferencias || []).slice().reverse();
-    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais utilizados lançados/corrigidos' };
+    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais utilizados lançados/corrigidos', devolvida: 'Reaberta para o técnico' };
     const retirada = ehRetirada(os);
     const em = os.emailRetirada || {};
     return `
@@ -711,13 +718,14 @@
             ${em.erro && !em.enviadoEm ? `<div class="notice">${VG.icon('alert')}<div>O e-mail de cliente retirado não foi enviado: ${VG.esc(em.erro)}</div></div>` : ''}` : ''}
           ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}
           ${st === 'reaberta' ? `<div class="notice">${VG.icon('refresh')}<div><strong>OS reaberta</strong> em ${VG.fmtDateTime(os.reabertaEm)}${os.reabertaPor ? ' por ' + VG.esc(os.reabertaPor) : ''}${os.reabertaMotivo ? '. Motivo: ' + VG.esc(os.reabertaMotivo) : ''}. Faça as correções e marque como processada novamente.</div></div>` : ''}
-          ${st === 'aguardando_cliente' ? '<p class="hint" style="margin:0">A conferência fica disponível depois que o cliente assinar a OS.</p>' : ''}
+          ${st === 'aguardando_cliente' ? '<p class="hint" style="margin:0">A conferência fica disponível depois que o cliente assinar a OS. Se o técnico esqueceu algo, reabra a OS para ele completar.</p>' : ''}
           ${st === 'concluida' ? '<p class="hint" style="margin:0">Confira os materiais separados e os utilizados antes de processar. Se faltar algum material ou a quantidade estiver errada, lance ou corrija abaixo.</p>' : ''}
           ${retirada && PODE_PROCESSAR.includes(st) && !em.enviadoEm ? `<div class="notice notice--info">${VG.icon('mail')}<div>OS de <strong>Retirada</strong>: ao marcar como processada, o sistema envia o e-mail <strong>Cliente retirado</strong> com os dados do cliente para ${EMAILS_RETIRADA.map(VG.esc).join(', ')}.</div></div>` : ''}
           <div class="conf-actions stack">
             ${PODE_PROCESSAR.includes(st) ? `<button class="btn" id="d-corrigir">${VG.icon('box')}<span>${nUsados ? 'Corrigir materiais utilizados' : 'Lançar materiais utilizados'}</span></button>` : ''}
             ${st === 'reaberta' ? `<a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Corrigir dados da OS</span></a>` : ''}
             ${PODE_PROCESSAR.includes(st) ? `<button class="btn btn-primary" id="d-processar">${VG.icon('check')}<span>Marcar como processada</span></button>` : ''}
+            ${PODE_DEVOLVER.includes(st) ? `<button class="btn" id="d-devolver" title="O técnico esqueceu algo? A OS volta para o celular dele completar.">${VG.icon('wrench')}<span>Reabrir para o técnico</span></button>` : ''}
             ${st === 'processada' ? `<button class="btn" id="d-reabrir">${VG.icon('refresh')}<span>Reabrir OS</span></button>` : ''}
           </div>
           ${hist.length ? `<ul class="conf-hist">${hist.map((h) => `<li><time>${VG.fmtDateTime(h.dataHora)}</time>${VG.esc(acao[h.acao] || h.acao)}${h.por ? ' por ' + VG.esc(h.por) : ''}${h.motivo ? ' — ' + VG.esc(h.motivo) : ''}</li>`).join('')}</ul>` : ''}
@@ -757,6 +765,44 @@
     };
     const C = VG.$('#d-corrigir', el);
     if (C) C.onclick = () => corrigirMateriais(id, again);
+    const D = VG.$('#d-devolver', el);
+    if (D) D.onclick = () => devolverTecnico(id, again);
+  }
+
+  /** Reabre a OS para o técnico completar (antes de processar) */
+  function devolverTecnico(id, done) {
+    const os = S().get('ordens', id);
+    if (!os) return;
+    if (!os.tecnicoId) return VG.toast('Esta OS não tem técnico responsável.', 'warn');
+    const assinou = !!(os.assinaturaCliente && os.assinaturaCliente.imagem);
+    VG.modal({
+      title: `Reabrir OS #${os.numero} para o técnico`, size: 'md',
+      onOpen: (m) => { const t = m.querySelector('#dv-motivo'); t.addEventListener('input', () => t.closest('.field').classList.remove('invalid')); },
+      body: `
+        <p style="margin:0 0 1rem">A OS volta para o celular de <b>${VG.esc(os.tecnicoNome || 'técnico')}</b> como <b>Em atendimento</b>, com tudo o que ele já registrou. Ele completa o que faltou, assina de novo e finaliza.</p>
+        <div class="field"><label for="dv-motivo">O que o técnico precisa completar?<span class="req">*</span></label>
+          <textarea id="dv-motivo" class="textarea" placeholder="Ex.: faltou informar o material utilizado e a foto depois do serviço"></textarea>
+          <span class="hint">O técnico vê este texto no topo da OS.</span></div>
+        ${assinou ? `
+        <div class="stack" style="margin-top:1rem;gap:.5rem">
+          <span class="label">Assinatura do cliente (${VG.esc(os.assinaturaCliente.nome || 'cliente')})</span>
+          <label class="check"><input type="radio" name="dv-ass" value="manter" checked><span><b>Manter a assinatura do cliente.</b> Quando o técnico finalizar, a OS volta direto para Realizadas.</span></label>
+          <label class="check"><input type="radio" name="dv-ass" value="nova"><span><b>O cliente assina de novo</b> (no celular do técnico ou pelo link). A assinatura atual fica guardada no histórico.</span></label>
+        </div>` : ''}`,
+      actions: [
+        { label: 'Voltar' },
+        { label: 'Reabrir para o técnico', cls: 'btn-primary', icon: 'refresh', onClick: async (m) => {
+          const motivo = m.el.querySelector('#dv-motivo').value.trim();
+          if (!motivo) { m.el.querySelector('#dv-motivo').closest('.field').classList.add('invalid'); VG.toast('Escreva o que o técnico precisa completar.', 'warn'); return false; }
+          const nova = !!m.el.querySelector('input[name=dv-ass][value=nova]:checked');
+          try {
+            const salva = await S().devolverTecnico(id, motivo, nova);
+            VG.toast(`OS #${salva.numero} reaberta. Ela já aparece no celular de ${(salva.tecnicoNome || 'técnico').split(' ')[0]}.`, 'success', 6000);
+            done && done();
+          } catch (e) { VG.toast('Não foi possível reabrir a OS: ' + e.message, 'error', 7000); return false; }
+        } },
+      ],
+    });
   }
 
   /** Supervisão lança ou corrige os materiais utilizados numa OS realizada ou reaberta */
@@ -844,7 +890,7 @@
 
     const card = (o) => {
       const atrasada = o.prazoData && !VG.isConcluida(o.status) && new Date(`${o.prazoData}T${o.prazoHora || '23:59'}`) < new Date();
-      const acao = { aguardando_tecnico: 'Abrir e iniciar', aberta: 'Abrir e iniciar', em_atendimento: 'Continuar atendimento', aguardando_cliente: 'Coletar assinatura', concluida: 'Ver OS', processada: 'Ver OS', reaberta: 'Ver OS' }[o.status];
+      const acao = { aguardando_tecnico: 'Abrir e iniciar', aberta: 'Abrir e iniciar', em_atendimento: devolvida(o) ? 'Completar OS' : 'Continuar atendimento', aguardando_cliente: 'Coletar assinatura', concluida: 'Ver OS', processada: 'Ver OS', reaberta: 'Ver OS' }[o.status];
       return `
       <a class="panel os-card os-card--${o.prioridade}" href="#/atendimento/${o.id}">
         <div class="os-card__top">
@@ -852,6 +898,7 @@
           <span class="os-card__num">OS #${o.numero}</span>
         </div>
         <div class="os-card__client">${VG.esc(o.cliente.nome)}</div>
+        ${devolvida(o) ? `<div class="os-card__row os-card__dev">${VG.icon('refresh')}<span><b>Reaberta pela supervisão:</b> ${VG.esc(String(o.devolucao.motivo || '').slice(0, 120))}</span></div>` : ''}
         <div class="os-card__row">${VG.icon('pin')}<span>${VG.esc([[o.cliente.endereco, o.cliente.numero].filter(Boolean).join(', '), o.cliente.bairro, o.cliente.cidade].filter(Boolean).join(' · ') || '—')}</span></div>
         <div class="os-card__row">${VG.icon('wrench')}<span><b>${VG.esc(o.tipo)}</b> · ${VG.esc(o.problema.length > 80 ? o.problema.slice(0, 80) + '…' : o.problema)}</span></div>
         <div class="os-card__foot">

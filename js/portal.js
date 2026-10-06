@@ -256,7 +256,10 @@
       if (a.usouMaterial === false) a.materiais = [];
       if (!nome) return bad('#t-nome', 'Informe o nome do técnico.');
       if (pad.isEmpty()) { VG.$('#t-sig', body).scrollIntoView({ behavior: 'smooth', block: 'center' }); return VG.toast('Assine no quadro antes de finalizar.', 'warn'); }
-      if (!(await VG.confirm('Depois de finalizar, o atendimento não poderá mais ser alterado pelo técnico e seguirá para a assinatura do cliente.', { title: 'Finalizar atendimento?', ok: 'Finalizar' }))) return;
+      const semNovaAssinatura = !!(os.devolucao && os.devolucao.manterAssinaturaCliente && os.assinaturaCliente);
+      if (!(await VG.confirm(semNovaAssinatura
+        ? 'Depois de finalizar, a OS volta para a conferência da supervisão. A assinatura do cliente já colhida será mantida.'
+        : 'Depois de finalizar, o atendimento não poderá mais ser alterado pelo técnico e seguirá para a assinatura do cliente.', { title: 'Finalizar atendimento?', ok: 'Finalizar' }))) return;
       const agora = VG.nowISO();
       os.assinaturaTecnico = { nome, imagem: pad.toDataURL(), dataHora: agora };
       a.fim = agora;
@@ -272,7 +275,7 @@
         os.status = 'em_atendimento'; os.assinaturaTecnico = null; a.fim = null; os.historico.splice(-3, 3);
         VG.setBusy(btnF, false); return;
       }
-      VG.toast('Atendimento finalizado. Agora falta a assinatura do cliente.', 'success');
+      VG.toast(os.status === 'concluida' ? 'OS completada e devolvida para a conferência da supervisão.' : 'Atendimento finalizado. Agora falta a assinatura do cliente.', 'success', 5000);
       redraw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -420,6 +423,7 @@
           return;
         }
         if (st === 'em_atendimento') {
+          if (os.devolucao) html = html.replace(clienteHTML(os, papel), () => notice('refresh', `<strong>A supervisão reabriu esta OS para você completar.</strong><br>${VG.esc(os.devolucao.motivo || '')}<br><span class="faint">${VG.esc(os.devolucao.por || 'Supervisão')} · ${VG.fmtDateTime(os.devolucao.em)}. Complete o que falta, assine e toque em Finalizar.${os.devolucao.manterAssinaturaCliente ? ' Não precisa colher a assinatura do cliente de novo.' : ' Depois, o cliente assina de novo.'}</span>`, false) + clienteHTML(os, papel));
           body.innerHTML = html + tecnicoFormHTML(os);
           bindTecnicoForm(body, os, draw);
           return;

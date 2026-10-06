@@ -21,7 +21,8 @@
   };
   const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'materiais'];
   /** Campos da conferência da supervisão: sempre valem os do servidor */
-  const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias'];
+  const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias',
+    'devolucao', 'devolucoes', 'assinaturasAnteriores'];
 
   let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: {}, rev: 0 };
   let publico = null; // { numero, t } quando a tela foi aberta por link exclusivo
@@ -129,6 +130,12 @@
         const sess = VG.Auth.current();
         if (salvo && col === 'ordens' && !publico && sess && sess.papel === 'supervisora') {
           ['atendimento', 'assinaturaTecnico', 'assinaturaCliente', 'status', 'historico'].concat(CONFERENCIA).forEach((c) => { if (salvo[c] !== undefined) f.obj[c] = salvo[c]; });
+        }
+        // técnico: a OS reaberta pela supervisão pode voltar direto para Realizada (assinatura do cliente mantida)
+        if (salvo && col === 'ordens' && (publico || (sess && sess.papel === 'tecnico'))) {
+          ['status', 'assinaturaCliente', 'historico'].forEach((c) => { if (salvo[c] !== undefined) f.obj[c] = salvo[c]; });
+          if (salvo.devolucao === undefined) delete f.obj.devolucao;
+          if (salvo.devolucoes !== undefined) f.obj.devolucoes = salvo.devolucoes;
         }
         if (salvo && salvo.atualizadoEm) f.obj.atualizadoEm = salvo.atualizadoEm;
         return salvo;
@@ -274,7 +281,7 @@
       try {
         const salva = await call(action, Object.assign({ id }, extra || {}));
         this.put('ordens', salva);
-        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
+        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, devolverTecnico: `OS #${salva.numero} reaberta para o técnico`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
         if (txt) { mem.atividades.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto: txt, osId: id, icon: 'check' }); mem.atividades = mem.atividades.slice(0, 150); }
         return salva;
       } catch (e) {
@@ -284,6 +291,8 @@
     },
     processarOS(id, extra) { return this.acaoOS('processarOS', id, extra); },
     reabrirOS(id, motivo) { return this.acaoOS('reabrirOS', id, { motivo }); },
+    /** Antes de processar: volta a OS para o técnico completar */
+    devolverTecnico(id, motivo, novaAssinaturaCliente) { return this.acaoOS('devolverTecnico', id, { motivo, novaAssinaturaCliente: !!novaAssinaturaCliente }); },
     corrigirMateriais(id, dados) { return this.acaoOS('corrigirMateriais', id, dados); },
 
     hist(os, texto, autor) {
