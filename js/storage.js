@@ -22,7 +22,7 @@
   const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'materiais'];
   /** Campos da conferência da supervisão: sempre valem os do servidor */
   const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias',
-    'devolucao', 'devolucoes', 'assinaturasAnteriores'];
+    'devolucao', 'devolucoes', 'assinaturasAnteriores', 'resolucaoRemota'];
 
   let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: {}, rev: 0 };
   let publico = null;
@@ -284,7 +284,7 @@
       try {
         const salva = await call(action, Object.assign({ id }, extra || {}));
         this.put('ordens', salva);
-        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, devolverTecnico: `OS #${salva.numero} reaberta para o técnico`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
+        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, devolverTecnico: `OS #${salva.numero} reaberta para o técnico`, resolverRemoto: `OS #${salva.numero} resolvida por telefone`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
         if (txt) { mem.atividades.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto: txt, osId: id, icon: 'check' }); mem.atividades = mem.atividades.slice(0, 150); }
         return salva;
       } catch (e) {
@@ -297,6 +297,8 @@
     /** Antes de processar: volta a OS para o técnico completar */
     devolverTecnico(id, motivo, novaAssinaturaCliente) { return this.acaoOS('devolverTecnico', id, { motivo, novaAssinaturaCliente: !!novaAssinaturaCliente }); },
     corrigirMateriais(id, dados) { return this.acaoOS('corrigirMateriais', id, dados); },
+    /** Supervisão resolveu por telefone: fecha a OS sem visita do técnico */
+    resolverRemoto(id, dados) { return this.acaoOS('resolverRemoto', id, dados); },
 
     hist(os, texto, autor) {
       os.historico = os.historico || [];

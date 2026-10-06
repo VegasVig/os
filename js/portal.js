@@ -97,6 +97,7 @@
         <h2>ORDEM DE SERVIÇO CONCLUÍDA</h2>
         <p>Obrigado. O atendimento foi registrado com sucesso.</p>
         <p class="faint" style="font-size:.85rem">OS #${os.numero} · ${VG.esc(os.cliente.nome)}${os.assinaturaCliente ? ' · assinada em ' + VG.fmtDateTime(os.assinaturaCliente.dataHora) : ''}</p>
+        ${os.resolucaoRemota ? `<p style="font-size:.9rem;margin-top:.4rem">${VG.icon('phone')} Resolvida por telefone pela supervisão em ${VG.fmtDateTime(os.resolucaoRemota.em)}. Não houve visita do técnico.</p>` : ''}
         <div class="done__actions">
           <button class="btn btn-primary btn-lg" data-act="pdf">${VG.icon('pdf')}<span>Gerar PDF</span></button>
           <button class="btn btn-lg" data-act="ver">${VG.icon('eye')}<span>Visualizar OS</span></button>

@@ -91,7 +91,8 @@
 
     const tecnicos = S().list('tecnicos');
     const linhasTec = tecnicos.map((t) => {
-      const os = list.filter((o) => o.tecnicoId === t.id);
+      // OS resolvida por telefone pela supervisão não conta para o técnico
+      const os = list.filter((o) => o.tecnicoId === t.id && !o.resolucaoRemota);
       const c = os.filter((o) => VG.isConcluida(o.status));
       return { nome: t.nome, total: os.length, concl: c.length, abertas: os.filter((o) => !VG.ENCERRADAS.includes(o.status)).length, tempo: horas(media(os.map(duracao).filter((x) => x != null))) };
     }).filter((x) => x.total).sort((a, b) => b.total - a.total);

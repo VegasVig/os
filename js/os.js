@@ -39,6 +39,9 @@
   const grupoStatus = (o) => (o.status === 'processada' ? 'processadas' : VG.isConcluida(o.status) ? 'realizadas' : o.status === 'cancelada' ? 'canceladas' : 'realizar');
   /** OS reaberta pela supervisão para o técnico completar */
   const devolvida = (o) => !!(o && o.devolucao) && o.status === 'em_atendimento';
+  /** OS que a supervisão pode fechar por telefone (ainda não finalizadas pelo técnico) */
+  const PODE_REMOTO = ['aberta', 'aguardando_tecnico', 'em_atendimento'];
+  const remota = (o) => !!(o && o.resolucaoRemota) && VG.isConcluida(o.status);
   const PESO = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
   const COR_PRIO = { urgente: 'red', alta: 'orange', normal: 'blue', baixa: 'gray' };
   const dot = (p) => { const k = COR_PRIO[p] ? p : 'normal'; return `<span class="os-dot os-dot--${COR_PRIO[k]}${k === 'urgente' ? ' os-dot--pulse' : ''}" title="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}" aria-label="Prioridade ${VG.esc(VG.PRIORIDADES[k].label)}"></span>`; };
@@ -224,7 +227,7 @@
       const [, mm, dd] = o.prazoData.split('-');
       return `<span class="d-long">${VG.esc(txt)}</span><span class="d-short">${dd}/${mm}</span>`;
     };
-    const detalhe = (o) => [devolvida(o) ? 'Reaberta para o técnico' : '', aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
+    const detalhe = (o) => [devolvida(o) ? 'Reaberta para o técnico' : '', remota(o) ? 'Resolvida por telefone' : '', aba === 'manutencao' && o.tipo !== 'Manutenção' ? o.tipo : '', o.equipamento && o.equipamento.tipo, o.cliente && o.cliente.bairro].filter(Boolean).join(' · ');
 
     const real = sub === 'realizadas' || sub === 'processadas';
     const numHTML = (o) => {
@@ -617,6 +620,7 @@
           </div>
           <div class="page-head__actions">
             ${!final ? `<a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Editar</span></a>` : ''}
+            ${PODE_REMOTO.includes(os.status) ? `<button class="btn" id="d-remoto" title="Resolveu o problema por telefone? Feche a OS sem visita do técnico.">${VG.icon('phone')}<span>Resolver por telefone</span></button>` : ''}
             ${os.status !== 'cancelada' ? `<button class="btn" id="d-links">${VG.icon('link')}<span>Links</span></button>` : ''}
             <button class="btn btn-primary" id="d-pdf">${VG.icon('pdf')}<span>Gerar PDF</span></button>
             ${!semCancelar ? `<button class="btn btn-danger" id="d-cancel">${VG.icon('ban')}<span>Cancelar</span></button>` : ''}
@@ -624,6 +628,7 @@
         </section>
 
         ${os.status === 'cancelada' ? `<div class="notice">${VG.icon('ban')}<div><strong>OS cancelada</strong> em ${VG.fmtDateTime(os.canceladaEm || (os.historico.slice(-1)[0] || {}).dataHora)}. Motivo: ${VG.esc(os.canceladaMotivo || '—')}</div></div>` : ''}
+        ${remota(os) ? `<div class="notice notice--info">${VG.icon('phone')}<div><strong>Resolvida por telefone pela supervisão</strong> em ${VG.fmtDateTime(os.resolucaoRemota.em)}${os.resolucaoRemota.por ? ' por ' + VG.esc(os.resolucaoRemota.por) : ''}. Falou com <b>${VG.esc(os.resolucaoRemota.contato || '—')}</b>${os.resolucaoRemota.telefone ? ' · ' + VG.esc(VG.fmtPhone(os.resolucaoRemota.telefone)) : ''}. Sem visita do técnico e sem assinaturas.</div></div>` : ''}
         ${devolvida(os) ? `<div class="notice">${VG.icon('refresh')}<div><strong>Reaberta para o técnico</strong> em ${VG.fmtDateTime(os.devolucao.em)}${os.devolucao.por ? ' por ' + VG.esc(os.devolucao.por) : ''}. O que completar: ${VG.esc(String(os.devolucao.motivo || '—').replace(/[.\s]+$/, ''))}.<br>A OS está de volta no celular de ${VG.esc(os.tecnicoNome || 'técnico')}. ${os.devolucao.manterAssinaturaCliente ? 'A assinatura do cliente foi mantida: quando o técnico finalizar, a OS volta direto para <b>Realizadas</b>.' : 'Quando o técnico finalizar, o cliente assina de novo (no celular do técnico ou pelo link).'}</div></div>` : ''}
         ${os.status === 'aguardando_cliente' ? `<div class="notice notice--info">${VG.icon('pen')}<div>Atendimento finalizado pelo técnico. Falta a assinatura do cliente, que o técnico coleta no próprio celular. Se precisar, também é possível enviar o <button class="btn btn-ghost btn-sm" id="d-link-cli" style="display:inline-flex;height:auto;padding:0 .2rem;text-decoration:underline">link do cliente</button>.</div></div>` : ''}
 
@@ -674,6 +679,7 @@
     const L = VG.$('#d-links', el); if (L) L.onclick = () => linkModal(S().get('ordens', id));
     const LC = VG.$('#d-link-cli', el); if (LC) LC.onclick = () => linkModal(S().get('ordens', id));
     const C = VG.$('#d-cancel', el); if (C) C.onclick = () => cancelar(id, () => renderDetail(el, id));
+    const RT = VG.$('#d-remoto', el); if (RT) RT.onclick = () => resolverRemoto(id, () => renderDetail(el, id));
     const TB = VG.$('#d-tec-ok', el);
     if (TB) TB.onclick = () => {
       const novo = VG.$('#d-tec', el).value;
@@ -703,7 +709,7 @@
     const nLevar = (os.materiaisLevar || []).length, nUsados = ((os.atendimento && os.atendimento.materiais) || []).length;
     const itens = (n) => `${n} ${n === 1 ? 'item' : 'itens'}`;
     const hist = (os.conferencias || []).slice().reverse();
-    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais utilizados lançados/corrigidos', devolvida: 'Reaberta para o técnico' };
+    const acao = { processada: 'Marcada como processada', reaberta: 'Reaberta', correcao: 'Materiais utilizados lançados/corrigidos', devolvida: 'Reaberta para o técnico', remota: 'Resolvida por telefone' };
     const retirada = ehRetirada(os);
     const em = os.emailRetirada || {};
     return `
@@ -711,6 +717,7 @@
         <div class="panel__body conf-box">
           <div class="conf-row"><span>OS nº / Cliente nº</span><b>${os.numero} · ${VG.esc(codCliente(os) || '—')}</b></div>
           <div class="conf-row"><span>Tipo de OS</span><b>${VG.esc(os.tipo || '—')}</b></div>
+          ${remota(os) ? `<div class="conf-row"><span>Atendimento</span><b>Por telefone (${VG.esc(String(os.resolucaoRemota.por || 'supervisão').split(' ')[0])})</b></div>` : ''}
           <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
           <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
           <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
@@ -768,6 +775,52 @@
     if (C) C.onclick = () => corrigirMateriais(id, again);
     const D = VG.$('#d-devolver', el);
     if (D) D.onclick = () => devolverTecnico(id, again);
+  }
+
+  /** A supervisão resolveu o problema por telefone: fecha a OS sem visita do técnico */
+  function resolverRemoto(id, done) {
+    const os = S().get('ordens', id);
+    if (!os) return;
+    const c = os.cliente || {};
+    const iniciou = os.status === 'em_atendimento';
+    VG.modal({
+      title: `Resolver OS #${os.numero} por telefone`, size: 'lg',
+      body: `
+        <p style="margin:0 0 1rem">A OS será fechada <b>sem visita do técnico</b> e sem assinaturas. Vai para <b>Realizadas</b> ou, se marcar a opção no final, direto para <b>Processadas</b>. Fica registrado que foi resolvida por telefone por <b>${VG.esc((VG.Auth.current() || {}).nome || 'você')}</b>.</p>
+        ${iniciou ? `<div class="notice" style="margin-bottom:1rem">${VG.icon('alert')}<div><b>${VG.esc(os.tecnicoNome || 'O técnico')}</b> já iniciou este atendimento. Ao fechar, ele não consegue mais alterar a OS. Confirme com ele antes.</div></div>`
+          : os.tecnicoNome ? `<div class="notice notice--info" style="margin-bottom:1rem">${VG.icon('info')}<div>A OS sai da lista de <b>${VG.esc(os.tecnicoNome)}</b> e ele recebe um aviso de que não precisa mais ir.</div></div>` : ''}
+        <div class="grid grid-2">
+          <div class="field"><label for="rr-contato">Falou com<span class="req">*</span></label><input id="rr-contato" class="input" placeholder="Nome de quem atendeu no cliente" autocomplete="off"></div>
+          <div class="field"><label for="rr-tel">Telefone</label><input id="rr-tel" class="input" inputmode="tel" value="${VG.esc(c.telefone ? VG.fmtPhone(c.telefone) : '')}"></div>
+          <div class="field span-all"><label for="rr-diag">O que estava acontecendo</label><textarea id="rr-diag" class="textarea" placeholder="Opcional. Ex.: central sem comunicação após queda de energia">${VG.esc((os.atendimento && os.atendimento.diagnostico) || '')}</textarea></div>
+          <div class="field span-all"><label for="rr-serv">Como foi resolvido<span class="req">*</span></label><textarea id="rr-serv" class="textarea" placeholder="Ex.: orientei o cliente a reiniciar a central; testamos juntos e voltou a comunicar"></textarea></div>
+          <label class="check span-all"><input type="checkbox" id="rr-proc" checked><span>Já marcar como <b>processada</b> (pula a conferência)</span></label>
+        </div>`,
+      onOpen: (m) => {
+        VG.$$('#rr-contato, #rr-serv', m).forEach((x) => x.addEventListener('input', () => x.closest('.field').classList.remove('invalid')));
+        setTimeout(() => { const x = VG.$('#rr-contato', m); x && x.focus(); }, 50);
+      },
+      actions: [
+        { label: 'Voltar' },
+        { label: 'Fechar OS', cls: 'btn-primary', icon: 'check', onClick: async (m) => {
+          const v = (n) => m.el.querySelector('#rr-' + n);
+          const bad = (n, msg) => { v(n).closest('.field').classList.add('invalid'); v(n).focus(); VG.toast(msg, 'warn'); return false; };
+          const contato = v('contato').value.trim(), servico = v('serv').value.trim();
+          if (!contato) return bad('contato', 'Informe com quem você falou no cliente.');
+          if (!servico) return bad('serv', 'Descreva como o problema foi resolvido.');
+          const processar = v('proc').checked;
+          try {
+            let salva = await S().resolverRemoto(id, { contato, servico, telefone: v('tel').value.trim(), diagnostico: v('diag').value.trim() });
+            if (processar) {
+              try { salva = await S().processarOS(id, VG.norm(salva.tipo) === 'retirada' && !S().getConfig().logoDataUrl && VG.LOGO_EMBED ? { logo: VG.LOGO_EMBED } : {}); }
+              catch (e) { VG.toast(`OS #${salva.numero} fechada, mas não foi possível marcar como processada: ${e.message}`, 'warn', 8000); done && done(); return true; }
+            }
+            VG.toast(`OS #${salva.numero} resolvida por telefone${processar ? ' e processada' : '. Ela está em Realizadas'}.`, 'success', 6000);
+            done && done();
+          } catch (e) { VG.toast('Não foi possível fechar a OS: ' + e.message, 'error', 7000); return false; }
+        } },
+      ],
+    });
   }
 
   /** Reabre a OS para o técnico completar (antes de processar) */

@@ -413,6 +413,7 @@
       if (rev === VG.Store.rev() && !forcar) return;
       const antes = new Set(VG.Store.list('ordens').map((o) => o.id));
       const devAntes = new Set(VG.Store.list('ordens').filter((o) => o.devolucao).map((o) => o.id + '|' + o.devolucao.em));
+      const pendAntes = new Set(VG.Store.list('ordens').filter((o) => !VG.ENCERRADAS.includes(o.status) && o.status !== 'aguardando_cliente').map((o) => o.id));
       await VG.Auth.restore();
       if (sess.papel === 'tecnico') {
         const novas = VG.Store.list('ordens').filter((o) => !antes.has(o.id) && o.tecnicoId === sess.tecnicoId && !VG.isConcluida(o.status));
@@ -421,6 +422,12 @@
           VG.toast(novas.length === 1 ? `Nova OS #${novas[0].numero}${urg ? ' — URGENTE' : ''}: ${novas[0].cliente.nome}` : `${novas.length} novas OS recebidas${urg ? ' (há urgente)' : ''}.`, urg ? 'warn' : 'info', 8000);
           try { navigator.vibrate && navigator.vibrate(urg ? [200, 100, 200] : 150); } catch (e) {}
         }
+        // OS que a supervisão resolveu por telefone: o técnico não precisa mais ir
+        VG.Store.list('ordens').filter((o) => o.resolucaoRemota && o.tecnicoId === sess.tecnicoId && pendAntes.has(o.id) && VG.isConcluida(o.status))
+          .forEach((o) => {
+            VG.toast(`OS #${o.numero} (${(o.cliente && o.cliente.nome) || 'cliente'}) foi resolvida por telefone pela supervisão. Não precisa ir.`, 'info', 9000);
+            try { navigator.vibrate && navigator.vibrate(150); } catch (e) {}
+          });
         // OS reaberta pela supervisão para completar
         VG.Store.list('ordens').filter((o) => o.devolucao && o.tecnicoId === sess.tecnicoId && antes.has(o.id) && !devAntes.has(o.id + '|' + o.devolucao.em))
           .forEach((o) => {

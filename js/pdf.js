@@ -198,6 +198,12 @@
       }
     }
 
+    /* Resolvida por telefone: no lugar das assinaturas, o registro da supervisão */
+    if (os.resolucaoRemota) {
+      const r = os.resolucaoRemota;
+      section('Atendimento remoto');
+      paragraph(`OS resolvida por telefone pela supervisão (${r.por || '-'}) em ${VG.fmtDateTime(r.em)}. Contato no cliente: ${r.contato || '-'}${r.telefone ? ' - ' + r.telefone : ''}. Não houve visita do técnico; por isso a OS não tem assinaturas.`);
+    } else {
     /* Assinaturas */
     section('Assinaturas');
     ensure(52);
@@ -230,6 +236,7 @@
     ensure(12);
     setText(7.5, 'italic', COR.cinza);
     paragraph('Declaração do cliente: "Declaro que o serviço descrito nesta Ordem de Serviço foi realizado e estou ciente das informações registradas."');
+    }
 
     /* Histórico */
     if (os.historico && os.historico.length) {
@@ -290,7 +297,8 @@
         ${sec('Materiais utilizados')}<p style="font-size:12px;margin:0 0 6px"><b>Utilizou material: ${esc(VG.Mat.usouTexto(os))}</b></p>${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Código</th><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Material</th><th style="text-align:right;padding:4px;border-bottom:1px solid #999">Quantidade</th></tr>${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.codigo || '—')}</td><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td></tr>`).join('')}</table>` : `<p style="font-size:12px">${VG.Mat.usou(os) === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.'}</p>`}
         ${sec('Observações')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.observacoes || '—')}</p>
         ${fotos.length ? sec('Fotos') + `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map(([l, f]) => `<div><img src="${f}" style="width:170px;height:128px;object-fit:cover;border:1px solid #ccc"><div style="font-size:9px;color:#666">${l}</div></div>`).join('')}</div>` : ''}
-        ${sec('Assinaturas')}<table style="width:100%;border-collapse:collapse"><tr>${sig('Técnico responsável', os.assinaturaTecnico)}${sig('Cliente', os.assinaturaCliente)}</tr></table>
+        ${os.resolucaoRemota ? `${sec('Atendimento remoto')}<p style="font-size:12px">OS resolvida por telefone pela supervisão (${esc(os.resolucaoRemota.por || '—')}) em ${VG.fmtDateTime(os.resolucaoRemota.em)}. Contato no cliente: ${esc(os.resolucaoRemota.contato || '—')}${os.resolucaoRemota.telefone ? ' · ' + esc(os.resolucaoRemota.telefone) : ''}. Não houve visita do técnico; por isso a OS não tem assinaturas.</p>`
+          : `${sec('Assinaturas')}<table style="width:100%;border-collapse:collapse"><tr>${sig('Técnico responsável', os.assinaturaTecnico)}${sig('Cliente', os.assinaturaCliente)}</tr></table>`}
         <div style="margin-top:18px;border-top:1px solid #aaa;padding-top:6px;font-size:9px;color:#666;display:flex;justify-content:space-between"><span>${esc(VG.Store.getConfig().empresa.nome)}</span><span>Gerado em ${VG.fmtDateTime(VG.nowISO())}</span></div>
       </div>`;
     const prevTitle = document.title;

@@ -26,6 +26,12 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **Resolver por telefone:** quando a supervisão resolve o problema por telefone, abra a OS e toque em **Resolver por telefone** (no topo da OS). Vale para OS **Aberta**, **Aguardando técnico** ou **Em atendimento**.
+  - Informe **com quem falou** e **como foi resolvido** (obrigatórios); telefone e o que estava acontecendo são opcionais.
+  - A OS fecha **sem visita do técnico e sem assinaturas** e vai para **Realizadas**. Com a opção **Já marcar como processada** (vem marcada), vai direto para **Processadas**.
+  - O técnico recebe o aviso "não precisa ir" e a OS sai da lista de pendentes dele. Se ele já tinha iniciado, aparece um alerta para confirmar com ele antes.
+  - Fica registrado no histórico, na conferência ("Atendimento: por telefone"), na lista ("Resolvida por telefone") e no PDF (no lugar das assinaturas).
+  - Não conta como OS concluída pelo técnico nos relatórios.
 - **Valores dos materiais para a supervisão:** com a lista importada em **Materiais**, a supervisão vê os valores (pelo código do material):
   - na busca, ao lado de cada material: valor de venda e custo;
   - na lista de itens adicionados (Materiais para levar e Lançar/Corrigir materiais utilizados): valor unitário, total de cada item e total geral (venda e custo);
