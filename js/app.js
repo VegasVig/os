@@ -56,6 +56,7 @@
     [/^\/os\/ver\/([\w-]+)$/, 'Detalhe da OS', 'os.todas', (el, m) => VG.OS.renderDetail(el, m[1]), 'os'],
     [/^\/clientes$/, 'Clientes', 'clientes', (el) => VG.Clientes.render(el), 'clientes'],
     [/^\/tecnicos$/, 'Técnicos', 'tecnicos', (el) => VG.Tecnicos.render(el), 'tecnicos'],
+    [/^\/materiais$/, 'Materiais e valores', 'materiais', (el) => VG.Materiais.render(el), 'materiais'],
     [/^\/relatorios$/, 'Relatórios', 'relatorios', (el) => VG.Relatorios.render(el), 'relatorios'],
     [/^\/configuracoes$/, 'Configurações', 'config', (el) => VG.Configuracoes.render(el), 'config'],
     [/^\/minhas-os$/, 'Minhas OS', 'os.proprias', (el) => VG.OS.renderMinhas(el), 'minhas'],
@@ -319,6 +320,7 @@
       <div class="nav__group">Cadastros</div>
       ${item('clientes', '#/clientes', 'users', 'Clientes', S().list('clientes').length)}
       ${item('tecnicos', '#/tecnicos', 'shield', 'Técnicos')}
+      ${item('materiais', '#/materiais', 'box', 'Materiais', S().list('materiais').filter((m) => m.ativo !== false).length)}
       <div class="nav__group">Gestão</div>
       ${item('relatorios', '#/relatorios', 'chart', 'Relatórios')}
       ${item('config', '#/configuracoes', 'settings', 'Configurações')}`;

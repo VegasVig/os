@@ -56,7 +56,7 @@
   const utf8 = (s) => unescape(encodeURIComponent(s));
 
   const PERMISSOES = {
-    supervisora: ['dashboard', 'os.criar', 'os.editar', 'os.cancelar', 'os.todas', 'clientes', 'clientes.importar', 'tecnicos', 'links', 'pdf', 'relatorios', 'config', 'historico'],
+    supervisora: ['dashboard', 'os.criar', 'os.editar', 'os.cancelar', 'os.todas', 'clientes', 'clientes.importar', 'tecnicos', 'materiais', 'links', 'pdf', 'relatorios', 'config', 'historico'],
     tecnico: ['os.proprias', 'atendimento', 'pdf', 'historico'],
     cliente: ['os.link'],
   };
@@ -159,7 +159,9 @@
         const existente = this.current() && VG.Store.get('ordens', r.os.id);
         if (existente) Object.assign(existente, r.os, { tokenTecnico: existente.tokenTecnico || r.os.tokenTecnico });
         else if (this.current()) VG.Store.put('ordens', r.os);
-        else { VG.Store.load({ ordens: [r.os], config: r.config }); }
+        else { VG.Store.load({ ordens: [r.os], config: r.config, materiais: r.materiais || [] }); }
+        // técnico pelo link: lista de materiais (sem valores) para a busca
+        if (r.materiais && r.materiais.length && !VG.Store.list('materiais').length) VG.Store.write('materiais', r.materiais);
         return { os: VG.Store.get('ordens', r.os.id), papel: r.papel };
       } catch (e) {
         VG.Store.setPublic(null);

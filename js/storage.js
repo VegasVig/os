@@ -19,11 +19,11 @@
     validadeLinkDias: 0,
     logoDataUrl: '',
   };
-  const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades'];
+  const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'materiais'];
   /** Campos da conferência da supervisão: sempre valem os do servidor */
   const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias'];
 
-  let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], config: {}, rev: 0 };
+  let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: {}, rev: 0 };
   let publico = null; // { numero, t } quando a tela foi aberta por link exclusivo
   const memLocal = {};
 
@@ -167,10 +167,11 @@
     load(snap) {
       mem = {
         users: snap.users || [], clientes: snap.clientes || [], tecnicos: snap.tecnicos || [],
-        ordens: snap.ordens || [], atividades: snap.atividades || [], config: snap.config || {}, rev: snap.rev || 0,
+        ordens: snap.ordens || [], atividades: snap.atividades || [], materiais: snap.materiais || [],
+        config: snap.config || {}, rev: snap.rev || 0,
       };
     },
-    clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], config: mem.config || {}, rev: 0 }; },
+    clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: mem.config || {}, rev: 0 }; },
     rev() { return mem.rev; },
     setRev(r) { mem.rev = r; },
     setPublic(link) { publico = link; },
@@ -250,6 +251,21 @@
       this.put('ordens', salva);
       mem.config.ultimoNumeroOS = salva.numero;
       return salva;
+    },
+    /**
+     * Lista de materiais e valores (CSV): atualiza pelo código e inclui os novos.
+     * Devolve { inseridos, atualizados, iguais, desativados }.
+     */
+    async importMateriais(items, desativarAusentes) {
+      pendentes++; atualizarIndicador();
+      try {
+        const r = await call('importMateriais', { items, desativarAusentes: !!desativarAusentes });
+        mem.materiais = r.materiais || [];
+        return r;
+      } catch (e) {
+        if (/a[çc][ãa]o desconhecida/i.test(e.message)) throw new Error('o servidor ainda está na versão antiga. Cole o Code.gs novo no Apps Script e publique uma nova versão da implantação.');
+        throw e;
+      } finally { pendentes--; atualizarIndicador(); }
     },
     /* ---------- conferência da supervisão (processar / reabrir / corrigir) ---------- */
     async acaoOS(action, id, extra) {

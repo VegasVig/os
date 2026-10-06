@@ -3,7 +3,7 @@
    Vegas Vigilância e Segurança
    -------------------------------------------------------------------------
    • Banco de dados: uma Planilha Google (criada automaticamente)
-       abas: Usuarios, Clientes, Tecnicos, Ordens, Atividades, Config
+       abas: Usuarios, Clientes, Tecnicos, Ordens, Atividades, Materiais, Config
        cada linha = id | atualizadoEm | colunas legíveis | json (registro completo)
    • Fotos, assinaturas e logo: pasta no Google Drive (arquivos privados)
    • Sessões: token aleatório no CacheService (expira após 6 h sem uso)
@@ -26,7 +26,8 @@ const CFG = {
   MAX_TENTATIVAS: 5,
   BLOQUEIO_SEG: 60,
   MAX_ATIVIDADES: 300,
-  VERSAO_BANCO: '3',        // 3 = cria o usuário Supervisao Estoque na primeira execução
+  VERSAO_BANCO: '4',        // 4 = cria a aba Materiais (cadastro de materiais e valores)
+  MAX_MATERIAIS: 5000,      // limite de itens por importação CSV de materiais
 };
 
 const TABELAS = {
@@ -35,6 +36,7 @@ const TABELAS = {
   tecnicos:   { aba: 'Tecnicos',   campos: ['nome', 'usuario', 'telefone', 'email', 'especialidade', 'ativo'] },
   ordens:     { aba: 'Ordens',     campos: ['numero', 'status', 'prioridade', 'tipo', 'cliente.nome', 'tecnicoNome', 'criadaEm', 'prazoData'] },
   atividades: { aba: 'Atividades', campos: ['dataHora', 'texto', 'osId'] },
+  materiais:  { aba: 'Materiais',  campos: ['codigo', 'descricao', 'marca', 'unidade', 'valor', 'valorVenda', 'ativo'] },
   config:     { aba: 'Config',     campos: [] },
 };
 const PAPEIS_SUP = ['supervisora'];
@@ -260,6 +262,13 @@ const ACOES = {
         const dup = ler_('users').find((x) => x.id !== obj.id && norm_(x.usuario) === norm_(obj.usuario));
         if (dup) throw new Error('Este usuário já está em uso.');
       }
+      if (col === 'materiais') {
+        obj = limparMaterialCad_(obj);
+        if (!obj.codigo) throw new Error('Informe o código do material.');
+        if (!obj.descricao) throw new Error('Informe o nome do material.');
+        const dupM = ler_('materiais').find((x) => x.id !== obj.id && norm_(x.codigo) === norm_(obj.codigo));
+        if (dupM) throw new Error('Já existe o material ' + dupM.descricao + ' com o código ' + dupM.codigo + '.');
+      }
       if (col === 'ordens') {
         const atual = ler_('ordens').find((o) => o.id === obj.id);
         if (atual && !podeVerOS_(s, atual)) throw new Error('Esta OS foi aberta por outra supervisora.');
@@ -331,6 +340,64 @@ const ACOES = {
       registrarAtividade_(novosT.length + ' técnicos importados via CSV', null, 'users');
       bump_();
       return { tecnicos: novosT, users: novosU.map(semSenha_) };
+    });
+  },
+
+  /**
+   * Cadastro de materiais e valores por lista CSV.
+   * Atualiza pelo CÓDIGO: código que já existe tem nome, marca, unidade e valores
+   * atualizados; código novo é incluído. Com `desativarAusentes`, os materiais que
+   * não estão no arquivo ficam inativos (somem da busca, mas não são apagados).
+   */
+  importMateriais(req) {
+    sessao_(req, PAPEIS_SUP);
+    const itens = Array.isArray(req.items) ? req.items : [];
+    if (!itens.length) throw new Error('Nenhum material para importar.');
+    if (itens.length > CFG.MAX_MATERIAIS) throw new Error('O arquivo tem ' + itens.length + ' materiais. O limite é ' + CFG.MAX_MATERIAIS + ' por importação.');
+    return comLock_(() => {
+      const lista = ler_('materiais');
+      const porCod = {};
+      lista.forEach((m) => (porCod[norm_(m.codigo)] = m));
+      const vistos = {};
+      let inseridos = 0, atualizados = 0, iguais = 0, desativados = 0;
+      itens.forEach((it, i) => {
+        const novo = limparMaterialCad_(it);
+        if (!novo.codigo || !novo.descricao) throw new Error('Linha ' + (i + 2) + ': código ou material em branco. Nada foi importado.');
+        const k = norm_(novo.codigo);
+        if (vistos[k]) return; // código repetido no arquivo: vale a primeira linha
+        vistos[k] = 1;
+        const atual = porCod[k];
+        if (!atual) {
+          novo.id = tok_(16).toLowerCase();
+          novo.ativo = true;
+          novo.criadoEm = agora_();
+          novo.atualizadoEm = agora_();
+          lista.push(novo);
+          porCod[k] = novo;
+          inseridos++;
+          return;
+        }
+        const antes = JSON.stringify([atual.descricao, atual.marca, atual.unidade, atual.valor, atual.valorVenda, atual.ativo !== false]);
+        atual.descricao = novo.descricao;
+        if (novo.marca) atual.marca = novo.marca;
+        if (novo.unidade) atual.unidade = novo.unidade;
+        if (novo.valor != null) atual.valor = novo.valor;
+        if (novo.valorVenda != null) atual.valorVenda = novo.valorVenda;
+        atual.ativo = true;
+        if (antes === JSON.stringify([atual.descricao, atual.marca, atual.unidade, atual.valor, atual.valorVenda, true])) { iguais++; return; }
+        atual.atualizadoEm = agora_();
+        atualizados++;
+      });
+      if (req.desativarAusentes) {
+        lista.forEach((m) => {
+          if (!vistos[norm_(m.codigo)] && m.ativo !== false) { m.ativo = false; m.atualizadoEm = agora_(); desativados++; }
+        });
+      }
+      lista.sort((a, b) => String(a.descricao).localeCompare(String(b.descricao), 'pt-BR'));
+      substituirTudo_('materiais', lista);
+      registrarAtividade_('Lista de materiais atualizada via CSV: ' + inseridos + ' novos, ' + atualizados + ' atualizados' + (desativados ? ', ' + desativados + ' desativados' : ''), null, 'box');
+      bump_();
+      return { inseridos: inseridos, atualizados: atualizados, iguais: iguais, desativados: desativados, materiais: lista };
     });
   },
 
@@ -424,6 +491,8 @@ const ACOES = {
     return comLock_(() => {
       substituirTudo_('users', users);
       ['clientes', 'tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
+      // backups antigos não têm a lista de materiais: nesse caso ela é mantida
+      if (Array.isArray(d.materiais)) substituirTudo_('materiais', d.materiais);
       substituirTudo_('ordens', (Array.isArray(d.ordens) ? d.ordens : []).map((o) => extrairImagens_(o, 'OS_' + o.numero)));
       salvarConfig_(extrairImagens_(Object.assign({}, d.config || {}), 'Logo'));
       garantirSupervisoras_();
@@ -510,12 +579,11 @@ const ACOES = {
       const os = osDaSupervisao_(s, req.id);
       if (['concluida', 'reaberta'].indexOf(os.status) < 0) throw new Error(os.status === 'processada' ? 'Reabra a OS antes de corrigir os materiais.' : 'Os materiais podem ser lançados pela supervisão depois que a OS for realizada (assinada pelo cliente).');
       const at = os.atendimento || (os.atendimento = {});
-      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais, true) : [];
+      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais) : [];
       if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
       at.usouMaterial = req.usouMaterial;
       at.materiais = mats;
       conferencia_(os, 'correcao', s, '');
-      // o histórico sai no PDF do cliente: registra os itens, nunca os valores
       hist_(os, req.usouMaterial ? 'Supervisão lançou/corrigiu os materiais utilizados: ' + resumoMats_(mats) + '.' : 'Supervisão corrigiu: não foi utilizado material.', s.nome);
       os.atualizadoEm = agora_();
       upsert_('ordens', os);
@@ -529,7 +597,7 @@ const ACOES = {
     const r = resolverLink_(req.numero, req.t);
     const os = semValores_(r.os);
     if (r.papel === 'cliente') os.tokenTecnico = '';
-    return { os: os, papel: r.papel, config: publicoConfig_(config_(), false) };
+    return { os: os, papel: r.papel, config: publicoConfig_(config_(), false), materiais: r.papel === 'tecnico' ? materiaisSemValores_() : [] };
   },
 
   savePublic(req) {
@@ -668,7 +736,7 @@ function logTransicao_(os, antes) {
  * `antigos`: itens já gravados — um valor interno existente (versão anterior do
  * sistema) é mantido no banco pelo id do item, mas nunca é aceito do navegador.
  */
-function limparMats_(lista, antigos, aceitarValor) {
+function limparMats_(lista, antigos) {
   const ant = {};
   (antigos || []).forEach((m) => { if (m && m.id) ant[m.id] = m; });
   return (Array.isArray(lista) ? lista : []).slice(0, 200).map((m) => {
@@ -681,11 +749,7 @@ function limparMats_(lista, antigos, aceitarValor) {
       quantidade: isFinite(q) && q > 0 ? Math.round(q * 1000) / 1000 : 0,
       unidade: String(m.unidade || '').trim().slice(0, 30),
     };
-    if (aceitarValor) {
-      // supervisão lançando materiais: o valor unitário vem dela (vazio = sem valor)
-      const v = Number(String(m.valor == null ? '' : m.valor).replace(',', '.'));
-      if (m.valor !== '' && m.valor != null && isFinite(v) && v >= 0) out.valor = Math.round(v * 100) / 100;
-    } else if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
+    if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
     return out;
   }).filter((m) => m.descricao && m.quantidade > 0);
 }
@@ -696,6 +760,35 @@ function semValores_(os) {
   if (c.atendimento && Array.isArray(c.atendimento.materiais)) c.atendimento.materiais.forEach((m) => { if (m) delete m.valor; });
   if (Array.isArray(c.materiaisLevar)) c.materiaisLevar.forEach((m) => { if (m) delete m.valor; });
   return c;
+}
+
+/** Material do cadastro (aba Materiais): código, nome, marca, unidade e valores */
+function limparMaterialCad_(m) {
+  m = m || {};
+  const num = (v) => {
+    if (v === '' || v == null) return null;
+    const n = typeof v === 'number' ? v : Number(String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    return isFinite(n) && n >= 0 ? Math.round(n * 10000) / 10000 : null;
+  };
+  const out = {
+    id: String(m.id || '').slice(0, 40),
+    codigo: String(m.codigo == null ? '' : m.codigo).trim().slice(0, 60),
+    descricao: String(m.descricao || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    marca: String(m.marca || '').trim().slice(0, 80),
+    unidade: String(m.unidade || '').trim().slice(0, 30),
+    valor: num(m.valor),
+    valorVenda: num(m.valorVenda),
+    ativo: m.ativo !== false,
+  };
+  if (m.criadoEm) out.criadoEm = String(m.criadoEm);
+  if (!out.id) delete out.id;
+  return out;
+}
+
+/** Lista de materiais ativos para a busca do técnico (sem valores) */
+function materiaisSemValores_() {
+  return ler_('materiais').filter((m) => m.ativo !== false)
+    .map((m) => ({ id: m.id, codigo: m.codigo, descricao: m.descricao, marca: m.marca || '', unidade: m.unidade || '' }));
 }
 
 function resumoMats_(mats) {
@@ -858,11 +951,12 @@ function resolverLink_(numero, token) {
 
 function snapshot_(s) {
   const cfg = config_();
-  const out = { rev: rev_(), atividades: [], users: [], clientes: [], tecnicos: [], ordens: [] };
+  const out = { rev: rev_(), atividades: [], users: [], clientes: [], tecnicos: [], ordens: [], materiais: [] };
   if (s.papel === 'supervisora') {
     out.users = ler_('users').map(semSenha_);
     out.clientes = ler_('clientes');
     out.tecnicos = ler_('tecnicos');
+    out.materiais = ler_('materiais');
     out.ordens = ler_('ordens').filter((o) => podeVerOS_(s, o));
     const minhas = {};
     out.ordens.forEach((o) => (minhas[o.id] = 1));
@@ -871,6 +965,7 @@ function snapshot_(s) {
   } else {
     out.tecnicos = ler_('tecnicos').filter((t) => t.id === s.tecnicoId);
     out.ordens = ler_('ordens').filter((o) => o.tecnicoId === s.tecnicoId).map(semValores_);
+    out.materiais = materiaisSemValores_(); // busca de materiais no atendimento (sem valores)
     out.config = publicoConfig_(cfg, false);
   }
   return out;

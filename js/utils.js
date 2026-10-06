@@ -155,7 +155,25 @@
   /** Total de um material (qtd × valor unitário) e da lista toda */
   VG.matTotal = (m) => (m && m.valor != null && m.valor !== '' ? Math.round(Number(m.quantidade || 0) * Number(m.valor) * 100) / 100 : null);
   VG.matsTotal = (mats) => { const v = (mats || []).map(VG.matTotal).filter((x) => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) * 100) / 100 : null; };
-  VG.UNIDADES = ['unidade(s)', 'metro(s)', 'rolo(s)', 'caixa(s)', 'par(es)', 'kit(s)', 'peça(s)'];
+  VG.UNIDADES = ['unidade(s)', 'metro(s)', 'rolo(s)', 'bobina(s)', 'caixa(s)', 'par(es)', 'kit(s)', 'peça(s)'];
+  /** Sigla da planilha de estoque (UN, MT, RL, BB…) → unidade usada na OS */
+  VG.unidadeDe = (txt) => {
+    const t = VG.norm(txt).replace(/[^a-z]/g, '');
+    if (!t) return '';
+    const mapa = {
+      un: 'unidade(s)', und: 'unidade(s)', unid: 'unidade(s)', unidade: 'unidade(s)', unidades: 'unidade(s)', u: 'unidade(s)',
+      m: 'metro(s)', mt: 'metro(s)', mts: 'metro(s)', metro: 'metro(s)', metros: 'metro(s)',
+      rl: 'rolo(s)', rol: 'rolo(s)', rolo: 'rolo(s)', rolos: 'rolo(s)',
+      bb: 'bobina(s)', bob: 'bobina(s)', bobina: 'bobina(s)', bobinas: 'bobina(s)',
+      cx: 'caixa(s)', caixa: 'caixa(s)', caixas: 'caixa(s)',
+      par: 'par(es)', pr: 'par(es)', pares: 'par(es)',
+      kit: 'kit(s)', kt: 'kit(s)', kits: 'kit(s)',
+      pc: 'peça(s)', pca: 'peça(s)', peca: 'peça(s)', pecas: 'peça(s)',
+    };
+    if (mapa[t]) return mapa[t];
+    const ja = VG.UNIDADES.find((u) => VG.norm(u).replace(/[^a-z]/g, '') === t);
+    return ja || String(txt).trim();
+  };
 
   VG.badge = (status, lg) => {
     const s = VG.STATUS[status] || { label: status, color: 'gray' };
@@ -375,11 +393,7 @@
 
   /* ---------- IMAGENS ---------- */
   /** Reduz a foto antes de armazenar (economiza espaço no navegador) */
-  /**
-   * Reduz a foto para JPEG. Com `carimbo` (ex.: "05/10/2026 16:03"), escreve a data e a hora
-   * no canto inferior direito da própria imagem (fica gravado na foto, no PDF e no Drive).
-   */
-  VG.compressImage = (file, max = 1280, quality = 0.72, carimbo = '') =>
+  VG.compressImage = (file, max = 1280, quality = 0.72) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
@@ -393,21 +407,6 @@
           const ctx = c.getContext('2d');
           ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
           ctx.drawImage(img, 0, 0, c.width, c.height);
-          if (carimbo) {
-            const fs = Math.max(16, Math.round(Math.min(c.width, c.height) * 0.045));
-            const pd = Math.round(fs * 0.45);
-            ctx.font = `bold ${fs}px Arial, Helvetica, sans-serif`;
-            ctx.textBaseline = 'middle';
-            const tw = ctx.measureText(carimbo).width;
-            const bw = tw + pd * 2, bh = fs + pd * 2;
-            const x = c.width - bw - pd, y = c.height - bh - pd;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-            ctx.fillRect(x, y, bw, bh);
-            ctx.lineWidth = Math.max(2, fs / 8); ctx.strokeStyle = '#000';
-            ctx.strokeText(carimbo, x + pd, y + bh / 2);
-            ctx.fillStyle = '#ffd400';
-            ctx.fillText(carimbo, x + pd, y + bh / 2);
-          }
           resolve(c.toDataURL('image/jpeg', quality));
         };
         img.src = reader.result;

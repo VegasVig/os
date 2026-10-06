@@ -1,7 +1,7 @@
 /* =========================================================
    VEGAS OS — MATERIAIS DA OS
-   CÓDIGO + MATERIAL + QUANTIDADE. Técnico, cliente e PDF nunca veem valores;
-   só a supervisão lança/vê o valor unitário dos materiais utilizados.
+   Controle somente de identificação e quantidade:
+   CÓDIGO + MATERIAL + QUANTIDADE (nunca valores na OS).
    • materiaisLevar  → separados pela supervisora para o técnico levar
    • atendimento.materiais + atendimento.usouMaterial → o que o técnico usou
    ========================================================= */
@@ -13,16 +13,11 @@
   const SUGESTOES = ['Cabo UTP', 'Conector RJ45', 'Fonte 12V', 'Conector BNC', 'Balun', 'Bateria 12V 7Ah', 'Sensor infravermelho', 'Cabo coaxial', 'HD 1TB', 'Fio de cerca elétrica', 'Isolador', 'Caixa de passagem'];
   const FEITAS = ['aguardando_cliente', 'concluida', 'processada', 'reaberta'];
 
-  /** Item limpo: identificação, quantidade e — só quando a supervisão lança — o valor unitário */
-  const limpar = (m) => {
-    const o = {
-      id: m.id || VG.uid(), codigo: String(m.codigo || '').trim(), descricao: String(m.descricao || '').trim(),
-      quantidade: Number(m.quantidade) || 0, unidade: m.unidade || VG.UNIDADES[0],
-    };
-    const v = m.valor;
-    if (v != null && v !== '' && isFinite(Number(v)) && Number(v) >= 0) o.valor = Math.round(Number(v) * 100) / 100;
-    return o;
-  };
+  /** Item limpo: só identificação e quantidade (o valor, se existir no banco, não é tocado aqui) */
+  const limpar = (m) => ({
+    id: m.id || VG.uid(), codigo: String(m.codigo || '').trim(), descricao: String(m.descricao || '').trim(),
+    quantidade: Number(m.quantidade) || 0, unidade: m.unidade || VG.UNIDADES[0],
+  });
 
   /**
    * Utilizou material?  true = Sim · false = Não · null = ainda não informado.
@@ -42,221 +37,260 @@
   };
 
   /**
-   * Catálogo para a busca: todos os materiais já usados/separados nas OS + sugestões.
-   * Guarda o último valor unitário lançado (para a supervisão) e quantas vezes foi usado.
+   * Catálogo da busca: materiais cadastrados (tela Materiais / lista CSV) e,
+   * depois, os códigos já usados em OS que não estão no cadastro.
    */
   function catalogo() {
     const map = {};
-    const ordens = S().list('ordens').slice().sort((a, b) => String(a.criadaEm).localeCompare(String(b.criadaEm)));
-    ordens.forEach((o) => {
+    const inativos = new Set();
+    S().list('materiais').forEach((m) => {
+      if (m && m.ativo === false) inativos.add(VG.norm(m.codigo));
+      if (!m || m.ativo === false || !m.descricao) return;
+      const k = VG.norm(m.codigo || m.descricao);
+      if (!map[k]) map[k] = { codigo: m.codigo || '', descricao: m.descricao, unidade: VG.unidadeDe(m.unidade), marca: m.marca || '', cadastro: true };
+    });
+    S().list('ordens').forEach((o) => {
       [].concat(o.materiaisLevar || [], (o.atendimento && o.atendimento.materiais) || []).forEach((m) => {
-        if (!m || !m.descricao) return;
-        const k = m.codigo ? 'c:' + VG.norm(m.codigo) : 'd:' + VG.norm(m.descricao);
-        const it = map[k] || (map[k] = { codigo: m.codigo || '', descricao: m.descricao, unidade: m.unidade, usos: 0 });
-        it.usos++;
-        if (m.unidade) it.unidade = m.unidade;
-        if (m.valor != null && m.valor !== '') it.valor = Number(m.valor);
+        if (!m || !m.codigo) return;
+        const k = VG.norm(m.codigo);
+        if (inativos.has(k)) return; // desativado na tela Materiais: não volta pela busca
+        if (!map[k]) map[k] = { codigo: m.codigo, descricao: m.descricao, unidade: m.unidade };
       });
     });
-    SUGESTOES.forEach((d) => {
-      const jaTem = Object.values(map).some((x) => VG.norm(x.descricao) === VG.norm(d));
-      if (!jaTem) map['d:' + VG.norm(d)] = { codigo: '', descricao: d, usos: 0 };
+    return Object.values(map).sort((a, b) => String(a.descricao).localeCompare(String(b.descricao), 'pt-BR', { numeric: true }));
+  }
+
+  /* ---------- Busca de materiais (aparece já na primeira letra) ---------- */
+  const MAX_SUG = 40;
+  /** Prepara o catálogo para buscar rápido: textos normalizados uma vez só */
+  function indice() {
+    const cat = catalogo();
+    // sem lista cadastrada: mantém as sugestões básicas de antes
+    if (!S().list('materiais').length) SUGESTOES.forEach((d) => { if (!cat.some((c) => VG.norm(c.descricao) === VG.norm(d))) cat.push({ codigo: '', descricao: d, unidade: '', marca: '' }); });
+    return cat.map((c) => {
+      const cod = VG.norm(c.codigo), desc = VG.norm(c.descricao);
+      return { c, cod, desc, txt: cod + ' ' + desc + ' ' + VG.norm(c.marca), palavras: desc.split(/[^a-z0-9]+/).filter(Boolean) };
     });
-    return Object.values(map).sort((a, b) => b.usos - a.usos || String(a.descricao).localeCompare(String(b.descricao), 'pt-BR'));
+  }
+  /**
+   * Procura pelo código ou pelo nome. Ordem: código que começa com o texto,
+   * nome que começa com o texto, palavra do nome que começa com o texto e,
+   * por último, o texto em qualquer parte. Várias palavras: todas precisam aparecer.
+   */
+  function buscar(idx, q) {
+    const nq = VG.norm(q);
+    if (!nq) return [];
+    const termos = nq.split(/\s+/).filter(Boolean);
+    const out = [];
+    for (const it of idx) {
+      if (!termos.every((t) => it.txt.includes(t))) continue;
+      let p = 4;
+      if (it.cod && it.cod === nq) p = 0;
+      else if (it.cod && it.cod.startsWith(nq)) p = 1;
+      else if (it.desc.startsWith(nq)) p = 2;
+      else if (it.palavras.some((w) => w.startsWith(termos[0]))) p = 3;
+      out.push({ p, it });
+    }
+    out.sort((a, b) => a.p - b.p
+      || (a.p === 1 ? a.it.cod.localeCompare(b.it.cod, 'pt-BR', { numeric: true }) : 0)
+      || a.it.desc.localeCompare(b.it.desc, 'pt-BR', { numeric: true }));
+    return out.map((x) => x.it.c);
+  }
+  /** Destaca no texto as partes digitadas (sem diferenciar acentos/maiúsculas) */
+  function destacar(txt, q) {
+    const s = String(txt || '');
+    const termos = VG.norm(q).split(/\s+/).filter(Boolean);
+    if (!termos.length) return VG.esc(s);
+    const ns = VG.norm(s);
+    // norm() pode encurtar o texto (acentos combinados); só destaca quando os tamanhos batem
+    if (ns.length !== s.length) return VG.esc(s);
+    const marca = new Array(s.length).fill(false);
+    termos.forEach((t) => { let i = ns.indexOf(t); while (i >= 0) { for (let j = i; j < i + t.length; j++) marca[j] = true; i = ns.indexOf(t, i + t.length); } });
+    let html = '', aberto = false;
+    for (let i = 0; i < s.length; i++) {
+      if (marca[i] && !aberto) { html += '<mark>'; aberto = true; }
+      if (!marca[i] && aberto) { html += '</mark>'; aberto = false; }
+      html += VG.esc(s[i]);
+    }
+    return html + (aberto ? '</mark>' : '');
   }
 
-  /** Procura no catálogo por nome ou código (todas as palavras digitadas, sem acento) */
-  function buscar(cat, q, max = 8) {
-    const n = VG.norm(q);
-    if (!n) return [];
-    const palavras = n.split(/\s+/).filter(Boolean);
-    return cat.map((x) => {
-      const nd = VG.norm(x.descricao), nc = VG.norm(x.codigo);
-      if (!palavras.every((w) => nd.includes(w) || nc.includes(w))) return null;
-      const peso = (nc && nc === n ? 0 : nc.startsWith(n) ? 1 : nd.startsWith(n) ? 2 : nd.split(/\s+/).some((w) => w.startsWith(palavras[0])) ? 3 : 4);
-      return { x, peso };
-    }).filter(Boolean).sort((a, b) => a.peso - b.peso || b.x.usos - a.x.usos).slice(0, max).map((r) => r.x);
-  }
-
-  /** Tabela de leitura: Código | Material | Quantidade (+ Valor unit. | Total para a supervisão) */
-  function tabelaHTML(mats, qtdLabel = 'Quantidade', vazio = 'Nenhum material registrado.', opts = {}) {
+  /** Tabela de leitura: Código | Material | Quantidade */
+  function tabelaHTML(mats, qtdLabel = 'Quantidade', vazio = 'Nenhum material registrado.') {
     if (!mats || !mats.length) return `<p class="faint" style="margin:0">${VG.esc(vazio)}</p>`;
-    const val = !!opts.valores;
-    const total = VG.matsTotal(mats);
-    return `<div class="mat-table"><table class="materials materials--cod${val ? ' materials--val' : ''}"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th>${val ? '<th class="num">Valor unit.</th><th class="num">Total</th>' : ''}</tr></thead><tbody>${mats.map((m) => `
-      <tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td>${val ? `<td class="mono-num num">${m.valor != null ? VG.fmtMoney(m.valor) : '<span class="faint">—</span>'}</td><td class="mono-num num">${VG.matTotal(m) != null ? VG.fmtMoney(VG.matTotal(m)) : '<span class="faint">—</span>'}</td>` : ''}</tr>`).join('')}</tbody>
-      ${val ? `<tfoot><tr><td colspan="4">Total dos materiais</td><td class="mono-num num">${total != null ? VG.fmtMoney(total) : '<span class="faint">sem valores</span>'}</td></tr></tfoot>` : ''}</table></div>`;
+    return `<div class="mat-table"><table class="materials materials--cod"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th></tr></thead><tbody>${mats.map((m) => `
+      <tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   /** Bloco "Utilizou material" + materiais utilizados (técnico, cliente e supervisão) */
-  function utilizadosHTML(os, opts = {}) {
+  function utilizadosHTML(os) {
     const a = (os && os.atendimento) || {};
     const u = usou(os);
     return `<div class="mat-usou"><span class="kv__k">Utilizou material:</span> ${usouBadge(os)}</div>
       ${u === false ? '<p class="faint" style="margin:.4rem 0 0">Não foi utilizado material.</p>'
         : u === null ? '<p class="faint" style="margin:.4rem 0 0">O técnico ainda não informou os materiais utilizados.</p>'
-        : tabelaHTML(a.materiais, 'Qtd. utilizada', undefined, opts)}`;
+        : tabelaHTML(a.materiais, 'Qtd. utilizada')}`;
   }
 
   /* ---------- Editor (adicionar / remover itens) ---------- */
   function editorHTML(p, opts = {}) {
     const levar = opts.levar || [];
-    const val = !!opts.valores;
+    const temCadastro = S().list('materiais').some((m) => m.ativo !== false);
     return `
       ${levar.length ? `<div class="mat-pick"><div class="kv__k">Separados pela supervisão — toque para usar</div>
         <div class="mat-pick__list">${levar.map((m) => `
           <button type="button" class="mat-chip" data-pick="${VG.esc(m.id)}">${VG.icon('box')}<span>${m.codigo ? `<b>${VG.esc(m.codigo)}</b>` : ''}${VG.esc(m.descricao)}</span><em>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</em></button>`).join('')}</div></div>` : ''}
-      <div class="mat-add mat-add--cod${val ? ' mat-add--val' : ''}">
-        <div class="field mat-search"><label for="${p}-cod">Código${opts.codigoObrigatorio ? '<span class="req">*</span>' : ''}</label><input id="${p}-cod" class="input" placeholder="Ex.: MAT-001" autocomplete="off" autocapitalize="characters" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${p}-cod-sug"><div class="mat-sug hidden" id="${p}-cod-sug" role="listbox"></div></div>
-        <div class="field mat-search"><label for="${p}-desc">Material<span class="req">*</span></label><div class="input-group">${VG.icon('search')}<input id="${p}-desc" class="input" placeholder="Digite para buscar…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${p}-desc-sug"></div><div class="mat-sug hidden" id="${p}-desc-sug" role="listbox"></div></div>
+      <div class="mat-add mat-add--cod">
+        <div class="field mat-ac"><label for="${p}-cod">Código${opts.codigoObrigatorio ? '<span class="req">*</span>' : ''}</label><input id="${p}-cod" class="input" placeholder="Ex.: 1110" autocomplete="off" autocapitalize="characters" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${p}-sugbox"></div>
+        <div class="field mat-ac"><label for="${p}-desc">Material<span class="req">*</span></label><input id="${p}-desc" class="input" placeholder="Digite para buscar…" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${p}-sugbox"></div>
         <div class="field"><label for="${p}-qtd">${VG.esc(opts.qtdLabel || 'Qtd.')}</label><input id="${p}-qtd" class="input" type="number" min="0" step="any" inputmode="decimal" value="1"></div>
         <div class="field"><label for="${p}-un">Unidade</label><select id="${p}-un" class="select">${VG.options(VG.UNIDADES, VG.UNIDADES[0])}</select></div>
-        ${val ? `<div class="field"><label for="${p}-val">Valor unit. (R$)</label><input id="${p}-val" class="input" inputmode="decimal" placeholder="0,00" autocomplete="off"></div>` : ''}
         <button type="button" class="btn" id="${p}-add">${VG.icon('plus')}<span>Adicionar</span></button>
       </div>
-      <ul class="mat-list${val ? ' mat-list--val' : ''}" id="${p}-list"></ul>`;
-  }
-
-  /** Lista de sugestões embaixo do campo, filtrando enquanto digita */
-  function ligarBusca(input, box, cat, onPick, mostrarValor) {
-    let itens = [], ativo = -1;
-    const fechar = () => { box.classList.add('hidden'); box.innerHTML = ''; itens = []; ativo = -1; input.setAttribute('aria-expanded', 'false'); };
-    const marcar = () => VG.$$('[data-i]', box).forEach((b, i) => { b.classList.toggle('is-on', i === ativo); if (i === ativo) b.scrollIntoView({ block: 'nearest' }); });
-    const abrir = () => {
-      itens = buscar(cat, input.value);
-      ativo = -1;
-      if (!itens.length) {
-        if (!input.value.trim()) return fechar();
-        box.innerHTML = '<div class="mat-sug__vazio">Nenhum material encontrado. Pode digitar um novo.</div>';
-      } else {
-        box.innerHTML = itens.map((x, i) => `
-          <button type="button" class="mat-sug__item" data-i="${i}" role="option" tabindex="-1">
-            <span>${x.codigo ? `<small class="mat-cod">${VG.esc(x.codigo)}</small>` : ''}${VG.esc(x.descricao)}</span>
-            <em>${mostrarValor && x.valor != null ? VG.esc(VG.fmtMoney(x.valor)) : VG.esc(x.unidade || '')}</em>
-          </button>`).join('');
-        // mousedown: escolhe antes do campo perder o foco
-        VG.$$('[data-i]', box).forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); escolher(Number(b.dataset.i)); }));
-      }
-      box.classList.remove('hidden');
-      input.setAttribute('aria-expanded', 'true');
-    };
-    const escolher = (i) => { const x = itens[i]; fechar(); if (x) onPick(x); };
-    input.addEventListener('input', abrir);
-    input.addEventListener('focus', () => { if (input.value.trim()) abrir(); });
-    input.addEventListener('blur', () => setTimeout(fechar, 150));
-    input.addEventListener('keydown', (e) => {
-      if (box.classList.contains('hidden') || !itens.length) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); ativo = (ativo + 1) % itens.length; marcar(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); ativo = (ativo - 1 + itens.length) % itens.length; marcar(); }
-      else if (e.key === 'Enter' && ativo >= 0) { e.preventDefault(); e.stopImmediatePropagation(); escolher(ativo); }
-      else if (e.key === 'Escape') { e.preventDefault(); fechar(); }
-    });
+      <div class="mat-sug hidden" id="${p}-sugbox" role="listbox" aria-label="Materiais encontrados"></div>
+      ${temCadastro ? '' : `<p class="hint" style="margin:.5rem 0 0">Nenhum material cadastrado ainda: digite o código e o nome. A supervisão cadastra a lista em <b>Materiais</b>.</p>`}
+      <ul class="mat-list" id="${p}-list"></ul>`;
   }
 
   /**
    * Liga o editor. `getItens()` devolve o array a ser alterado (sempre o atual);
-   * `onChange()` é chamado após incluir/remover/alterar.
-   * opts.valores: supervisão — informa valor unitário e pode ajustar quantidade/valor de cada item.
+   * `onChange()` é chamado após incluir/remover.
    */
   function bindEditor(root, p, getItens, opts = {}) {
     const $ = (id) => VG.$('#' + p + '-' + id, root);
     const cod = $('cod'), desc = $('desc'), qtd = $('qtd'), un = $('un'), list = $('list');
-    const valIn = $('val');
-    const val = !!opts.valores && !!valIn;
-    const cat = catalogo();
-    const avisar = () => opts.onChange && opts.onChange();
+    const idx = indice();
+    const porCodigo = (c) => { const n = VG.norm(c); const r = n && idx.find((x) => x.cod === n); return r && r.c; };
+    const porDesc = (d) => { const n = VG.norm(d); const r = n && idx.find((x) => x.desc === n); return r && r.c; };
+    const setUn = (u) => {
+      if (!u) return;
+      if (!Array.from(un.options).some((o) => o.value === u)) un.insertAdjacentHTML('beforeend', `<option value="${VG.esc(u)}">${VG.esc(u)}</option>`);
+      un.value = u;
+    };
 
-    const preencher = (x) => {
-      cod.value = x.codigo || '';
-      desc.value = x.descricao || '';
-      if (x.unidade && VG.UNIDADES.includes(x.unidade)) un.value = x.unidade;
-      if (val && x.valor != null && !valIn.value.trim()) valIn.value = String(x.valor.toFixed(2)).replace('.', ',');
+    /* ----- lista de sugestões: abre na primeira letra digitada ----- */
+    const box = $('sugbox');
+    let achados = [], ativo = -1, campo = null;
+    let host = null; // quadro (panel/modal) que fica por cima dos vizinhos enquanto a lista está aberta
+    const fechar = () => {
+      box.classList.add('hidden'); box.innerHTML = ''; achados = []; ativo = -1;
+      if (host) { host.classList.remove('mat-sug-host'); host = null; }
+      [cod, desc].forEach((i) => { i.setAttribute('aria-expanded', 'false'); i.removeAttribute('aria-activedescendant'); });
+    };
+    const escolher = (c) => {
+      if (!c) return;
+      cod.value = c.codigo || ''; desc.value = c.descricao || ''; setUn(c.unidade);
+      fechar();
+      VG.$$('.field.invalid', root).forEach((x) => x.classList.remove('invalid'));
       qtd.focus(); try { qtd.select(); } catch (e) {}
     };
-    ligarBusca(desc, $('desc-sug'), cat, preencher, val);
-    ligarBusca(cod, $('cod-sug'), cat, preencher, val);
-
-    const totalHTML = () => {
-      const t = VG.matsTotal(getItens());
-      return `<li class="mat-total"><span>Total dos materiais</span><b data-total>${t != null ? VG.fmtMoney(t) : '—'}</b></li>`;
+    const marcar = (i) => {
+      ativo = i;
+      VG.$$('.mat-sug__item', box).forEach((b, j) => b.classList.toggle('on', j === i));
+      const sel = box.querySelector('.mat-sug__item.on');
+      if (sel) { sel.scrollIntoView({ block: 'nearest' }); campo && campo.setAttribute('aria-activedescendant', sel.id); }
     };
+    const abrir = (input) => {
+      campo = input;
+      const q = input.value.trim();
+      if (!q || !idx.length) return fechar();
+      const todos = buscar(idx, q);
+      achados = todos.slice(0, MAX_SUG);
+      // a lista aparece logo abaixo do campo em que se está digitando, na largura do quadro
+      const linha = input.closest('.mat-add');
+      if (box.parentNode !== linha) linha.appendChild(box);
+      box.style.top = (input.offsetTop + input.offsetHeight + 4) + 'px';
+      box.innerHTML = achados.length
+        ? achados.map((c, i) => `
+          <button type="button" class="mat-sug__item" role="option" id="${p}-sug-${i}" data-i="${i}" tabindex="-1">
+            <span class="mat-sug__cod">${c.codigo ? destacar(c.codigo, q) : '—'}</span>
+            <span class="mat-sug__txt"><b>${destacar(c.descricao, q)}</b>${detalhe(c) ? `<small>${VG.esc(detalhe(c))}</small>` : ''}</span>
+          </button>`).join('') + (todos.length > achados.length ? `<div class="mat-sug__mais">Mais ${todos.length - achados.length} resultados — continue digitando para filtrar.</div>` : '')
+        : `<div class="mat-sug__vazio">Nenhum material com “${VG.esc(q)}”. Você pode digitar o material mesmo assim.</div>`;
+      box.classList.remove('hidden');
+      if (!host) { host = linha.closest('.panel, .modal'); if (host) host.classList.add('mat-sug-host'); }
+      input.setAttribute('aria-expanded', 'true');
+      ativo = -1;
+      VG.$$('.mat-sug__item', box).forEach((b) => {
+        b.addEventListener('mousedown', (e) => e.preventDefault()); // não tira o foco do campo antes do clique
+        b.addEventListener('click', () => escolher(achados[Number(b.dataset.i)]));
+      });
+      if (achados.length) marcar(0);
+      // celular: garante que a lista não fique escondida atrás do teclado
+      requestAnimationFrame(() => { try { box.scrollIntoView({ block: 'nearest' }); } catch (e) {} });
+    };
+    // marca genérica ("MARCA GERAL") não ajuda a escolher: não aparece
+    const detalhe = (c) => [/^marca geral$/i.test(String(c.marca || '').trim()) ? '' : c.marca, c.unidade].filter(Boolean).join(' · ');
+    const teclas = (input) => (e) => {
+      const aberta = !box.classList.contains('hidden') && achados.length;
+      if (e.key === 'ArrowDown' && aberta) { e.preventDefault(); marcar((ativo + 1) % achados.length); }
+      else if (e.key === 'ArrowUp' && aberta) { e.preventDefault(); marcar((ativo - 1 + achados.length) % achados.length); }
+      else if (e.key === 'Escape' && !box.classList.contains('hidden')) { e.preventDefault(); e.stopPropagation(); fechar(); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && aberta && ativo >= 0) {
+        if (e.key === 'Tab' && e.shiftKey) return;
+        e.preventDefault(); e.stopImmediatePropagation(); escolher(achados[ativo]);
+      }
+    };
+    [cod, desc].forEach((input) => {
+      input.addEventListener('input', () => abrir(input));
+      input.addEventListener('focus', () => { if (input.value.trim()) abrir(input); });
+      input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== cod && document.activeElement !== desc) fechar(); }, 150));
+      input.addEventListener('keydown', teclas(input));
+    });
+
     const draw = () => {
       const itens = getItens();
-      if (!itens.length) {
-        list.innerHTML = `<li class="faint" style="justify-content:center">${VG.esc(opts.vazio || 'Nenhum material adicionado.')}</li>`;
-      } else if (val) {
-        list.innerHTML = itens.map((m) => `
-          <li data-id="${VG.esc(m.id)}">${VG.icon('box')}
-            <span class="mat-list__nome">${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span>
-            <label class="mat-ed"><small>Qtd.${m.unidade ? ' (' + VG.esc(m.unidade) + ')' : ''}</small><input class="input" data-q type="number" min="0" step="any" inputmode="decimal" value="${VG.esc(m.quantidade)}"></label>
-            <label class="mat-ed"><small>Valor unit.</small><input class="input" data-v inputmode="decimal" placeholder="0,00" value="${m.valor != null ? VG.esc(Number(m.valor).toFixed(2).replace('.', ',')) : ''}"></label>
-            <b class="mat-sub" data-sub>${VG.matTotal(m) != null ? VG.fmtMoney(VG.matTotal(m)) : '—'}</b>
-            <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('') + totalHTML();
-        // ajuste direto na lista: quantidade e valor de cada item (inclusive os do técnico)
-        VG.$$('li[data-id]', list).forEach((li) => {
-          const m = getItens().find((x) => x.id === li.dataset.id);
-          const q = VG.$('[data-q]', li), v = VG.$('[data-v]', li);
-          const atualizar = () => {
-            li.querySelector('[data-sub]').textContent = VG.matTotal(m) != null ? VG.fmtMoney(VG.matTotal(m)) : '—';
-            const t = VG.matsTotal(getItens());
-            list.querySelector('[data-total]').textContent = t != null ? VG.fmtMoney(t) : '—';
-            avisar();
-          };
-          q.addEventListener('input', () => { const n = Number(String(q.value).replace(',', '.')); q.closest('.mat-ed').classList.toggle('invalid', !(n > 0)); if (n > 0) { m.quantidade = Math.round(n * 1000) / 1000; atualizar(); } });
-          v.addEventListener('input', () => {
-            const n = VG.parseMoney(v.value);
-            v.closest('.mat-ed').classList.toggle('invalid', Number.isNaN(n));
-            if (Number.isNaN(n)) return;
-            if (n == null) delete m.valor; else m.valor = n;
-            atualizar();
-          });
-          v.addEventListener('blur', () => { if (m.valor != null) v.value = Number(m.valor).toFixed(2).replace('.', ','); });
-        });
-      } else {
-        list.innerHTML = itens.map((m) => `
+      list.innerHTML = itens.length ? itens.map((m) => `
         <li>${VG.icon('box')}<span>${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</b>
-          <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('');
-      }
+          <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
+        : `<li class="faint" style="justify-content:center">${VG.esc(opts.vazio || 'Nenhum material adicionado.')}</li>`;
       VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => {
         const arr = getItens();
         const i = arr.findIndex((m) => m.id === b.dataset.rm);
         if (i >= 0) arr.splice(i, 1);
-        avisar();
+        opts.onChange && opts.onChange();
         draw();
       }));
     };
 
+    // código ou nome digitado por inteiro (sem tocar na lista): completa o outro campo
+    cod.addEventListener('change', () => {
+      const c = porCodigo(cod.value);
+      if (c) { desc.value = c.descricao || desc.value; setUn(c.unidade); }
+    });
+    desc.addEventListener('change', () => {
+      if (cod.value.trim()) return;
+      const c = porDesc(desc.value);
+      if (c) { cod.value = c.codigo; setUn(c.unidade); }
+    });
+
     const add = () => {
       const c = cod.value.trim(), d = desc.value.trim(), q = Number(String(qtd.value).replace(',', '.'));
-      const v = val ? VG.parseMoney(valIn.value) : null;
-      VG.$$('.mat-add .field.invalid', root).forEach((x) => x.classList.remove('invalid'));
+      VG.$$('.field.invalid', root).forEach((x) => x.classList.remove('invalid'));
       const bad = (el, msg) => { el.closest('.field').classList.add('invalid'); el.focus(); VG.toast(msg, 'warn'); };
       if (opts.codigoObrigatorio && !c) return bad(cod, 'Informe o código do material.');
       if (!d) return bad(desc, 'Informe o material.');
       if (!(q > 0)) return bad(qtd, 'Informe uma quantidade válida.');
-      if (val && Number.isNaN(v)) return bad(valIn, 'Valor inválido. Use, por exemplo, 12,50.');
       const arr = getItens();
       // mesmo código (ou mesmo material sem código) e mesma unidade: soma a quantidade
       const igual = arr.find((m) => m.unidade === un.value && (c ? VG.norm(m.codigo) === VG.norm(c) : !m.codigo && VG.norm(m.descricao) === VG.norm(d)));
-      if (igual) {
-        igual.quantidade = Math.round((Number(igual.quantidade) + q) * 1000) / 1000;
-        if (val && v != null) igual.valor = v;
-      } else arr.push(limpar({ codigo: c, descricao: d, quantidade: q, unidade: un.value, valor: val ? v : null }));
-      avisar();
+      if (igual) igual.quantidade = Math.round((Number(igual.quantidade) + q) * 1000) / 1000;
+      else arr.push(limpar({ codigo: c, descricao: d, quantidade: q, unidade: un.value }));
+      opts.onChange && opts.onChange();
       draw();
       cod.value = ''; desc.value = ''; qtd.value = 1; un.value = VG.UNIDADES[0];
-      if (val) valIn.value = '';
-      (opts.codigoObrigatorio ? cod : desc).focus();
+      fechar();
+      (idx.length ? desc : opts.codigoObrigatorio ? cod : desc).focus();
     };
     $('add').onclick = add;
-    [cod, desc, qtd].concat(val ? [valIn] : []).forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }));
+    [cod, desc, qtd].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }));
 
-    // toca no material separado pela supervisão e confirma a quantidade usada
+    // técnico: toca no material separado pela supervisão e confirma a quantidade usada
     VG.$$('[data-pick]', root).forEach((b) => (b.onclick = () => {
       const m = (opts.levar || []).find((x) => x.id === b.dataset.pick);
       if (!m) return;
-      cod.value = m.codigo || ''; desc.value = m.descricao || ''; un.value = m.unidade || VG.UNIDADES[0]; qtd.value = m.quantidade || 1;
-      if (val) { const x = cat.find((k) => m.codigo && VG.norm(k.codigo) === VG.norm(m.codigo)); valIn.value = x && x.valor != null ? x.valor.toFixed(2).replace('.', ',') : ''; }
+      cod.value = m.codigo || ''; desc.value = m.descricao || ''; setUn(m.unidade || VG.UNIDADES[0]); qtd.value = m.quantidade || 1;
+      fechar();
       qtd.focus(); try { qtd.select(); } catch (e) {}
       VG.toast('Confira a quantidade utilizada e toque em Adicionar.', 'info', 2600);
     }));
@@ -268,5 +302,5 @@
   /** "MAT-001 Sensor (4 unidade(s)); Cabo UTP (10 metro(s))" — usado no histórico */
   const resumo = (mats) => (mats || []).map((m) => `${m.codigo ? m.codigo + ' ' : ''}${m.descricao} (${m.quantidade}${m.unidade ? ' ' + m.unidade : ''})`).join('; ');
 
-  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, buscar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor };
+  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor };
 })();

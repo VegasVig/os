@@ -584,7 +584,7 @@
       <div class="sig-card__name">${VG.esc(s ? s.nome : '—')}</div>
       <div class="sig-card__meta">${s ? `${s.documento ? 'Doc. ' + VG.esc(s.documento) + ' · ' : ''}${VG.fmtDateTime(s.dataHora)}` : ''}</div></div>`;
   }
-  /** Materiais da OS: somente código, material e quantidade (sem valores) */
+  /** Materiais da OS: somente código, material e quantidade (nunca valores) */
   function materiaisHTML(mats) {
     return VG.Mat.tabelaHTML(mats, 'Quantidade');
   }
@@ -647,7 +647,7 @@
               <div class="panel__body stack">
                 <div><div class="kv__k">Diagnóstico</div><p class="text-block">${VG.esc(a.diagnostico || '—')}</p></div>
                 <div><div class="kv__k">Serviço executado</div><p class="text-block">${VG.esc(a.servico || '—')}</p></div>
-                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os, { valores: true })}</div>
+                <div><div class="kv__k" style="margin-bottom:.3rem">Materiais utilizados</div>${VG.Mat.utilizadosHTML(os)}</div>
                 <div><div class="kv__k">Observações do técnico</div><p class="text-block">${VG.esc(a.observacoes || '—')}</p></div>
                 ${os.assinaturaCliente && os.assinaturaCliente.observacoes ? `<div><div class="kv__k">Observações do cliente</div><p class="text-block">${VG.esc(os.assinaturaCliente.observacoes)}</p></div>` : ''}
               </div></section>
@@ -707,7 +707,6 @@
           <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
           <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
           <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
-          ${nUsados ? `<div class="conf-row"><span>Valor dos materiais</span><b>${VG.matsTotal(os.atendimento.materiais) != null ? VG.fmtMoney(VG.matsTotal(os.atendimento.materiais)) : '<span class="faint">sem valores</span>'}</b></div>` : ''}
           ${retirada ? `<div class="conf-row"><span>E-mail "Cliente retirado"</span>${em.enviadoEm ? `<b>Enviado em ${VG.fmtDateTime(em.enviadoEm)}</b>` : em.erro ? `<b class="conf-err">Não enviado</b>` : '<b>Será enviado ao processar</b>'}</div>
             ${em.erro && !em.enviadoEm ? `<div class="notice">${VG.icon('alert')}<div>O e-mail de cliente retirado não foi enviado: ${VG.esc(em.erro)}</div></div>` : ''}` : ''}
           ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}
@@ -774,10 +773,9 @@
             <input type="radio" name="cm-usou" id="cm-nao" value="nao" ${estado.usou === false ? 'checked' : ''}><label for="cm-nao">NÃO</label>
           </div></div>
         <div id="cm-nao-box" class="notice notice--info ${estado.usou === false ? '' : 'hidden'}">${VG.icon('info')}<div>Não foi utilizado material.</div></div>
-        <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd.', valores: true })}
-          <p class="hint" style="margin:.6rem 0 0">Os valores ficam só para a supervisão (aparecem na OS para vocês e no CSV dos Relatórios). Técnico, cliente e PDF não veem valores.</p></div>`,
+        <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}</div>`,
       onOpen: (m) => {
-        VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [], valores: true });
+        VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [] });
         VG.$$('input[name=cm-usou]', m).forEach((r) => (r.onchange = () => {
           estado.usou = r.value === 'sim';
           VG.$('#cm-ed', m).classList.toggle('hidden', !estado.usou);
@@ -789,7 +787,6 @@
         { label: 'Salvar materiais', cls: 'btn-primary', icon: 'check', onClick: async () => {
           if (estado.usou !== true && estado.usou !== false) { VG.toast('Informe se foi utilizado algum material.', 'warn'); return false; }
           if (estado.usou && !estado.itens.length) { VG.toast('Adicione os materiais utilizados ou marque NÃO.', 'warn'); return false; }
-          if (VG.$$('.mat-list .mat-ed.invalid').length) { VG.toast('Confira as quantidades e os valores marcados em vermelho.', 'warn'); return false; }
           try {
             await S().corrigirMateriais(id, { usouMaterial: estado.usou, materiais: estado.usou ? estado.itens : [] });
             VG.toast('Materiais utilizados salvos na OS.', 'success');
