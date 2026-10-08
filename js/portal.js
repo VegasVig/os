@@ -227,7 +227,8 @@
         box.insertAdjacentHTML('beforeend', '<div class="thumb" data-loading style="display:grid;place-items:center"><span class="spinner"></span></div>');
         let added = 0;
         for (const f of files.slice(0, livres)) {
-          try { a.fotos[g].push(await VG.compressImage(f, 1024, 0.68)); added++; }
+          // data e hora do momento da foto gravadas na imagem
+          try { a.fotos[g].push(await VG.compressImage(f, 1024, 0.68, VG.fmtDateTime(new Date().toISOString()))); added++; }
           catch (e) { VG.toast(e.message || 'Não foi possível carregar a foto.', 'error'); }
         }
         if (!persist()) { a.fotos[g].splice(a.fotos[g].length - added, added); added = 0; }

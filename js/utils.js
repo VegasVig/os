@@ -393,7 +393,11 @@
 
   /* ---------- IMAGENS ---------- */
   /** Reduz a foto antes de armazenar (economiza espaço no navegador) */
-  VG.compressImage = (file, max = 1280, quality = 0.72) =>
+  /**
+   * Reduz a foto para JPEG. Com `carimbo` (ex.: "05/10/2026 16:03"), escreve a data e a hora
+   * no canto inferior direito da própria imagem (fica gravado na foto, no PDF e no Drive).
+   */
+  VG.compressImage = (file, max = 1280, quality = 0.72, carimbo = '') =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
@@ -407,6 +411,21 @@
           const ctx = c.getContext('2d');
           ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
           ctx.drawImage(img, 0, 0, c.width, c.height);
+          if (carimbo) {
+            const fs = Math.max(16, Math.round(Math.min(c.width, c.height) * 0.045));
+            const pd = Math.round(fs * 0.45);
+            ctx.font = `bold ${fs}px Arial, Helvetica, sans-serif`;
+            ctx.textBaseline = 'middle';
+            const tw = ctx.measureText(carimbo).width;
+            const bw = tw + pd * 2, bh = fs + pd * 2;
+            const x = c.width - bw - pd, y = c.height - bh - pd;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(x, y, bw, bh);
+            ctx.lineWidth = Math.max(2, fs / 8); ctx.strokeStyle = '#000';
+            ctx.strokeText(carimbo, x + pd, y + bh / 2);
+            ctx.fillStyle = '#ffd400';
+            ctx.fillText(carimbo, x + pd, y + bh / 2);
+          }
           resolve(c.toDataURL('image/jpeg', quality));
         };
         img.src = reader.result;

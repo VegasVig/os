@@ -533,6 +533,7 @@ const ACOES = {
       os.processadaPor = s.nome;
       os.processadaPorId = s.userId;
       conferencia_(os, 'processada', s, '');
+      congelarValores_(os);
       hist_(os, 'OS conferida pela supervisão e marcada como PROCESSADA.', s.nome);
       // Retirada: avisa por e-mail (uma vez só; se a OS for reaberta e processada de novo, não repete)
       if (norm_(os.tipo) === 'retirada' && !(os.emailRetirada && os.emailRetirada.enviadoEm)) {
@@ -666,7 +667,7 @@ const ACOES = {
       const os = osDaSupervisao_(s, req.id);
       if (['concluida', 'reaberta'].indexOf(os.status) < 0) throw new Error(os.status === 'processada' ? 'Reabra a OS antes de corrigir os materiais.' : 'Os materiais podem ser lançados pela supervisão depois que a OS for realizada (assinada pelo cliente).');
       const at = os.atendimento || (os.atendimento = {});
-      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais) : [];
+      const mats = req.usouMaterial ? limparMats_(req.materiais, at.materiais, true) : [];
       if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
       at.usouMaterial = req.usouMaterial;
       at.materiais = mats;
@@ -836,11 +837,12 @@ function logTransicao_(os, antes) {
 /* ---------- Materiais e conferência ---------- */
 
 /**
- * Lista de materiais limpa: só identificação e quantidade.
- * `antigos`: itens já gravados — um valor interno existente (versão anterior do
- * sistema) é mantido no banco pelo id do item, mas nunca é aceito do navegador.
+ * Lista de materiais limpa: identificação e quantidade.
+ * `antigos`: itens já gravados — valores existentes são mantidos pelo id do item.
+ * `aceitarVenda`: só na correção feita pela supervisão — o valor unitário de venda
+ * (valorVenda, o que aparece no PDF) vem dela. O custo (valor) nunca vem do navegador.
  */
-function limparMats_(lista, antigos) {
+function limparMats_(lista, antigos, aceitarVenda) {
   const ant = {};
   (antigos || []).forEach((m) => { if (m && m.id) ant[m.id] = m; });
   return (Array.isArray(lista) ? lista : []).slice(0, 200).map((m) => {
@@ -854,16 +856,36 @@ function limparMats_(lista, antigos) {
       unidade: String(m.unidade || '').trim().slice(0, 30),
     };
     if (antigos && ant[out.id] && ant[out.id].valor != null) out.valor = ant[out.id].valor;
+    if (aceitarVenda) {
+      const v = m.valorVenda === '' || m.valorVenda == null ? NaN : Number(String(m.valorVenda).replace(',', '.'));
+      if (isFinite(v) && v >= 0) out.valorVenda = Math.round(v * 100) / 100;
+    } else if (antigos && ant[out.id] && ant[out.id].valorVenda != null) out.valorVenda = ant[out.id].valorVenda;
     return out;
   }).filter((m) => m.descricao && m.quantidade > 0);
 }
 
-/** Cópia da OS sem qualquer valor de material (técnico e cliente) */
+/**
+ * Cópia da OS para técnico e cliente: nunca leva o custo.
+ * O valor de venda lançado pela supervisão nos materiais utilizados fica, porque sai no PDF da OS.
+ */
 function semValores_(os) {
   const c = JSON.parse(JSON.stringify(os));
   if (c.atendimento && Array.isArray(c.atendimento.materiais)) c.atendimento.materiais.forEach((m) => { if (m) delete m.valor; });
-  if (Array.isArray(c.materiaisLevar)) c.materiaisLevar.forEach((m) => { if (m) delete m.valor; });
+  if (Array.isArray(c.materiaisLevar)) c.materiaisLevar.forEach((m) => { if (m) { delete m.valor; delete m.valorVenda; } });
   return c;
+}
+
+/** Ao processar: item sem valor de venda recebe o valor da lista de Materiais (fica gravado na OS) */
+function congelarValores_(os) {
+  const at = os.atendimento || {};
+  if (at.usouMaterial === false || !Array.isArray(at.materiais) || !at.materiais.length) return;
+  const lista = {};
+  ler_('materiais').forEach((m) => { if (m && m.codigo) lista[norm_(m.codigo)] = m; });
+  at.materiais.forEach((m) => {
+    if (!m || m.valorVenda != null || !m.codigo) return;
+    const p = lista[norm_(m.codigo)];
+    if (p && p.valorVenda != null && p.valorVenda !== '' && isFinite(Number(p.valorVenda))) m.valorVenda = Math.round(Number(p.valorVenda) * 100) / 100;
+  });
 }
 
 /** Material do cadastro (aba Materiais): código, nome, marca, unidade e valores */

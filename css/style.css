@@ -1102,3 +1102,17 @@ html.is-saving::after {
 .materials--val th.r, .materials--val td.r { text-align: right; white-space: nowrap; }
 .materials--val .sub { display: block; font-size: .74rem; }
 .materials--val tfoot td { border-top: 1px solid var(--line-strong); }
+
+/* Corrigir materiais (supervisão): quantidade e valor editáveis em cada item */
+.mat-list li.mat-li-ed { flex-wrap: wrap; row-gap: .45rem; }
+.mat-li-ed .mat-li-ed__nome { flex: 1 1 200px; }
+.mat-ed { display: flex; flex-direction: column; gap: .15rem; width: 104px; }
+.mat-ed small, .mat-ed__tot small { font-size: .7rem; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mat-ed .input { min-height: 36px; padding: .3rem .5rem; font-size: .9rem; }
+.mat-ed.invalid .input { border-color: var(--st-red); }
+.mat-ed__tot { display: flex; flex-direction: column; align-items: flex-end; min-width: 108px; }
+.mat-list li.mat-li-ed .mat-ed__tot b { margin-left: 0; }
+@media (max-width: 720px) {
+  .mat-li-ed .mat-li-ed__nome { flex-basis: calc(100% - 2.2rem); }
+  .mat-ed { width: auto; flex: 1 1 0; }
+}

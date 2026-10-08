@@ -873,9 +873,10 @@
             <input type="radio" name="cm-usou" id="cm-nao" value="nao" ${estado.usou === false ? 'checked' : ''}><label for="cm-nao">NÃO</label>
           </div></div>
         <div id="cm-nao-box" class="notice notice--info ${estado.usou === false ? '' : 'hidden'}">${VG.icon('info')}<div>Não foi utilizado material.</div></div>
-        <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}</div>`,
+        <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}
+          <p class="hint" style="margin:.6rem 0 0">Ajuste a quantidade e o <b>valor unitário</b> de cada item direto na lista. Itens sem valor lançado começam com o valor de venda da lista de Materiais. Esses valores saem no PDF da OS.</p></div>`,
       onOpen: (m) => {
-        VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [] });
+        VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [], editarValores: true });
         VG.$$('input[name=cm-usou]', m).forEach((r) => (r.onchange = () => {
           estado.usou = r.value === 'sim';
           VG.$('#cm-ed', m).classList.toggle('hidden', !estado.usou);
@@ -887,6 +888,7 @@
         { label: 'Salvar materiais', cls: 'btn-primary', icon: 'check', onClick: async () => {
           if (estado.usou !== true && estado.usou !== false) { VG.toast('Informe se foi utilizado algum material.', 'warn'); return false; }
           if (estado.usou && !estado.itens.length) { VG.toast('Adicione os materiais utilizados ou marque NÃO.', 'warn'); return false; }
+          if (estado.usou && VG.$$('#cm-list .mat-ed.invalid').length) { VG.toast('Confira as quantidades e os valores marcados em vermelho.', 'warn'); return false; }
           try {
             await S().corrigirMateriais(id, { usouMaterial: estado.usou, materiais: estado.usou ? estado.itens : [] });
             VG.toast('Materiais utilizados salvos na OS.', 'success');

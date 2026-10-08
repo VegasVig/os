@@ -140,3 +140,9 @@ O link do cliente continua disponível, mas só é necessário quando o cliente 
 ## Segurança
 - **Entrada do técnico:** é feita pelo nome, como pedido, sem senha. Qualquer pessoa que abrir o site pode tocar no nome de um técnico, mas só vai ver as OS daquele técnico. Clientes, outros técnicos, relatórios e configurações continuam protegidos pelo login da supervisora.
 - **Técnico desligado:** desmarque **Técnico ativo** no cadastro. Ele some da tela inicial e perde o acesso na hora.
+
+## Valores no PDF e na correção de materiais
+- **Corrigir materiais (supervisão):** cada item da lista tem **Qtd.** e **Valor un. (R$)** editáveis, inclusive os itens lançados pelo técnico. Item sem valor começa com o valor de venda da lista de **Materiais**, e o total é recalculado na hora.
+- **PDF da OS:** mostra **Valor un.**, **Total** de cada material e o **Total dos materiais**. O custo nunca aparece. O valor usado é o lançado pela supervisão na OS; ao **processar**, os itens que ainda não têm valor recebem o valor da lista, que fica gravado na OS (mudanças futuras na lista não alteram OS já processadas).
+- **Histórico:** continua na tela da OS, mas não sai mais no PDF.
+- **Problemas da setinha:** a lista fica só em `js/utils.js` (`VG.PROBLEMAS`). Basta incluir o nome ali, entre aspas e separado por vírgula; a ordem alfabética é automática.

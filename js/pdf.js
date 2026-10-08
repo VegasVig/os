@@ -150,7 +150,7 @@
     section('Diagnóstico'); paragraph(a.diagnostico);
     section('Serviço executado'); paragraph(a.servico);
 
-    // Materiais: somente código, material e quantidade (a OS não mostra valores)
+    // Materiais: código, material, quantidade e — quando lançados — valor unitário e total
     section('Materiais utilizados');
     const mats = a.materiais || [];
     const usou = VG.Mat.usou(os);
@@ -158,22 +158,43 @@
     doc.text(safe(`Utilizou material: ${usou === true ? 'SIM' : usou === false ? 'NÃO' : 'não informado'}`), M, y); y += 6;
     if (!mats.length) paragraph(usou === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.');
     else {
+      const vUn = mats.map((m) => VG.Mat.vendaDe(m));
+      const comValor = vUn.some((v) => v != null);
+      const brl = (v) => (v == null ? '-' : safe(VG.fmtMoney(v)));
       ensure(8);
       doc.setFillColor(...COR.grafite); doc.rect(M, y - 4.5, CW, 6.5, 'F');
-      const xQtd = W - M - 3;
-      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Código', M + 14, y); doc.text('Material', M + 46, y); doc.text('Quantidade', xQtd, y, { align: 'right' });
+      const xTot = W - M - 3, xUn = xTot - 27, xQtd = comValor ? xUn - 27 : xTot;
+      const xMat = comValor ? M + 38 : M + 46, wMat = (comValor ? xQtd - 24 : CW - 90 + M + 46) - xMat;
+      setText(8, 'bold', COR.branco); doc.text('Item', M + 3, y); doc.text('Código', M + 14, y); doc.text('Material', xMat, y); doc.text('Quantidade', xQtd, y, { align: 'right' });
+      if (comValor) { doc.text('Valor un.', xUn, y, { align: 'right' }); doc.text('Total', xTot, y, { align: 'right' }); }
       y += 5;
+      let total = 0;
       mats.forEach((m, i) => {
-        const ln = doc.splitTextToSize(safe(m.descricao), CW - 90);
-        const cod = doc.splitTextToSize(safe(m.codigo || '-'), 30);
+        const ln = doc.splitTextToSize(safe(m.descricao), comValor ? wMat : CW - 90);
+        const cod = doc.splitTextToSize(safe(m.codigo || '-'), comValor ? 22 : 30);
         const h = Math.max(ln.length, cod.length) * 4.4 + 2.4;
         ensure(h + 1);
         if (i % 2 === 0) { doc.setFillColor(245, 246, 248); doc.rect(M, y - 3.8, CW, h, 'F'); }
         setText(8.8, 'normal', COR.texto);
-        doc.text(String(i + 1).padStart(2, '0'), M + 3, y); doc.text(cod, M + 14, y); doc.text(ln, M + 46, y);
+        doc.text(String(i + 1).padStart(2, '0'), M + 3, y); doc.text(cod, M + 14, y); doc.text(ln, xMat, y);
         doc.text(safe(`${m.quantidade} ${m.unidade || ''}`), xQtd, y, { align: 'right' });
+        if (comValor) {
+          const t = vUn[i] == null ? null : Math.round(Number(m.quantidade || 0) * vUn[i] * 100) / 100;
+          if (t != null) total += t;
+          doc.text(brl(vUn[i]), xUn, y, { align: 'right' });
+          doc.text(brl(t), xTot, y, { align: 'right' });
+        }
         y += h;
       });
+      if (comValor) {
+        ensure(8);
+        doc.setDrawColor(...COR.grafite); doc.setLineWidth(0.4); doc.line(M, y - 3.2, W - M, y - 3.2);
+        y += 1.6;
+        setText(9.5, 'bold', COR.texto);
+        doc.text('Total dos materiais', xUn, y, { align: 'right' });
+        doc.text(brl(Math.round(total * 100) / 100), xTot, y, { align: 'right' });
+        y += 4;
+      }
       y += 3;
     }
 
@@ -238,17 +259,7 @@
     paragraph('Declaração do cliente: "Declaro que o serviço descrito nesta Ordem de Serviço foi realizado e estou ciente das informações registradas."');
     }
 
-    /* Histórico */
-    if (os.historico && os.historico.length) {
-      section('Histórico');
-      os.historico.forEach((h) => {
-        const ln = doc.splitTextToSize(safe(h.texto), CW - 34);
-        ensure(ln.length * 4.2 + 1.5);
-        setText(8, 'bold', COR.cinza); doc.text(VG.fmtDateTime(h.dataHora), M, y);
-        setText(8.5, 'normal', COR.texto); doc.text(ln, M + 32, y);
-        y += ln.length * 4.2 + 1.5;
-      });
-    }
+    /* O histórico da OS fica só no sistema: não sai no PDF */
 
     /* Rodapé em todas as páginas */
     const pages = doc.getNumberOfPages();
@@ -283,6 +294,20 @@
     const sec = (t) => `<div style="background:#e6e8eb;border-left:4px solid #2a2e33;padding:5px 10px;font:700 11px sans-serif;margin:14px 0 6px;text-transform:uppercase">${esc(t)}</div>`;
     const sig = (t, s) => `<td style="border:1px solid #ccc;padding:8px;text-align:center;width:50%"><div style="font-size:9px;color:#666;text-align:left">${t}</div>${s && s.imagem ? `<img src="${s.imagem}" style="height:60px">` : '<div style="height:60px;color:#aaa;font-size:11px;padding-top:20px">Aguardando assinatura</div>'}<div style="border-top:1px solid #aaa;margin-top:4px;padding-top:4px;font-weight:700;font-size:12px">${esc(s ? s.nome : '—')}</div><div style="font-size:10px;color:#666">${s ? 'Assinado em ' + VG.fmtDateTime(s.dataHora) : ''}</div></td>`;
     const fotos = [...((a.fotos && a.fotos.antes) || []).map((f) => ['Antes', f]), ...((a.fotos && a.fotos.depois) || []).map((f) => ['Depois', f])];
+    const matsPrint = (mats) => {
+      const vUn = mats.map((m) => VG.Mat.vendaDe(m));
+      const val = vUn.some((v) => v != null);
+      const th = (t, r) => `<th style="text-align:${r ? 'right' : 'left'};padding:4px;border-bottom:1px solid #999">${t}</th>`;
+      const td = (t, r) => `<td style="border-bottom:1px solid #ddd;padding:4px${r ? ';text-align:right' : ''}">${esc(t)}</td>`;
+      let total = 0;
+      const linhas = mats.map((m, i) => {
+        const t = vUn[i] == null ? null : Math.round(Number(m.quantidade || 0) * vUn[i] * 100) / 100;
+        if (t != null) total += t;
+        return `<tr>${td(m.codigo || '—')}${td(m.descricao)}${td(m.quantidade + ' ' + (m.unidade || ''), 1)}${val ? td(vUn[i] == null ? '—' : VG.fmtMoney(vUn[i]), 1) + td(t == null ? '—' : VG.fmtMoney(t), 1) : ''}</tr>`;
+      }).join('');
+      return `<table style="width:100%;font-size:12px;border-collapse:collapse"><tr>${th('Código')}${th('Material')}${th('Quantidade', 1)}${val ? th('Valor un.', 1) + th('Total', 1) : ''}</tr>${linhas}
+        ${val ? `<tr><td colspan="4" style="padding:6px 4px;text-align:right;font-weight:700">Total dos materiais</td><td style="padding:6px 4px;text-align:right;font-weight:700">${esc(VG.fmtMoney(Math.round(total * 100) / 100))}</td></tr>` : ''}</table>`;
+    };
     root.innerHTML = `
       <div style="font-family:Arial,sans-serif;color:#111">
         <div style="background:#0c0d0f;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
@@ -294,7 +319,7 @@
         ${sec('Problema relatado')}<p style="font-size:12px;white-space:pre-wrap">${esc(os.problema)}</p>
         ${sec('Diagnóstico')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.diagnostico || '—')}</p>
         ${sec('Serviço executado')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.servico || '—')}</p>
-        ${sec('Materiais utilizados')}<p style="font-size:12px;margin:0 0 6px"><b>Utilizou material: ${esc(VG.Mat.usouTexto(os))}</b></p>${(a.materiais || []).length ? `<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Código</th><th style="text-align:left;padding:4px;border-bottom:1px solid #999">Material</th><th style="text-align:right;padding:4px;border-bottom:1px solid #999">Quantidade</th></tr>${a.materiais.map((m) => `<tr><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.codigo || '—')}</td><td style="border-bottom:1px solid #ddd;padding:4px">${esc(m.descricao)}</td><td style="border-bottom:1px solid #ddd;padding:4px;text-align:right">${esc(m.quantidade + ' ' + (m.unidade || ''))}</td></tr>`).join('')}</table>` : `<p style="font-size:12px">${VG.Mat.usou(os) === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.'}</p>`}
+        ${sec('Materiais utilizados')}<p style="font-size:12px;margin:0 0 6px"><b>Utilizou material: ${esc(VG.Mat.usouTexto(os))}</b></p>${(a.materiais || []).length ? matsPrint(a.materiais) : `<p style="font-size:12px">${VG.Mat.usou(os) === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.'}</p>`}
         ${sec('Observações')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.observacoes || '—')}</p>
         ${fotos.length ? sec('Fotos') + `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map(([l, f]) => `<div><img src="${f}" style="width:170px;height:128px;object-fit:cover;border:1px solid #ccc"><div style="font-size:9px;color:#666">${l}</div></div>`).join('')}</div>` : ''}
         ${os.resolucaoRemota ? `${sec('Atendimento remoto')}<p style="font-size:12px">OS resolvida por telefone pela supervisão (${esc(os.resolucaoRemota.por || '—')}) em ${VG.fmtDateTime(os.resolucaoRemota.em)}. Contato no cliente: ${esc(os.resolucaoRemota.contato || '—')}${os.resolucaoRemota.telefone ? ' · ' + esc(os.resolucaoRemota.telefone) : ''}. Não houve visita do técnico; por isso a OS não tem assinaturas.</p>`

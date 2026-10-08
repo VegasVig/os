@@ -24,6 +24,18 @@
     return map;
   }
   const precoDe = (mapa, m) => (m && m.codigo ? mapa[VG.norm(m.codigo)] || null : null);
+  const temValor = (v) => v != null && v !== '' && isFinite(Number(v));
+  /**
+   * Valor unitário de venda do item: o lançado pela supervisão na OS (fica gravado)
+   * ou, se ainda não houver, o da lista de Materiais (só para a supervisão).
+   */
+  const vendaDe = (m, mapa) => {
+    if (m && temValor(m.valorVenda)) return Number(m.valorVenda);
+    if (!verValores()) return null;
+    const p = precoDe(mapa || precos(), m);
+    return p && temValor(p.valorVenda) ? Number(p.valorVenda) : null;
+  };
+  const custoDe = (m, mapa) => { const p = precoDe(mapa, m); return p && temValor(p.valor) ? Number(p.valor) : (m && temValor(m.valor) ? Number(m.valor) : null); };
   const mult = (q, v) => (v == null || v === '' ? null : Math.round(Number(q || 0) * Number(v) * 100) / 100);
   const reais = (v) => (v == null || v === '' ? '—' : VG.fmtMoney(v));
   /** Totais (custo e venda) de uma lista de materiais pela lista de preços atual */
@@ -31,8 +43,7 @@
     mapa = mapa || precos();
     let custo = 0, venda = 0, semPreco = 0;
     (mats || []).forEach((m) => {
-      const p = precoDe(mapa, m);
-      const c = mult(m.quantidade, p && p.valor), v = mult(m.quantidade, p && p.valorVenda);
+      const c = mult(m.quantidade, custoDe(m, mapa)), v = mult(m.quantidade, vendaDe(m, mapa));
       if (c == null && v == null) semPreco++;
       custo += c || 0; venda += v || 0;
     });
@@ -41,11 +52,15 @@
   /** Lista de materiais ainda não chegou do servidor (Code.gs antigo) */
   const servidorSemLista = () => !!S().semListaMateriais && S().semListaMateriais();
 
-  /** Item limpo: só identificação e quantidade (o valor, se existir no banco, não é tocado aqui) */
-  const limpar = (m) => ({
-    id: m.id || VG.uid(), codigo: String(m.codigo || '').trim(), descricao: String(m.descricao || '').trim(),
-    quantidade: Number(m.quantidade) || 0, unidade: m.unidade || VG.UNIDADES[0],
-  });
+  /** Item limpo: identificação, quantidade e o valor de venda lançado pela supervisão (se houver) */
+  const limpar = (m) => {
+    const o = {
+      id: m.id || VG.uid(), codigo: String(m.codigo || '').trim(), descricao: String(m.descricao || '').trim(),
+      quantidade: Number(m.quantidade) || 0, unidade: m.unidade || VG.UNIDADES[0],
+    };
+    if (temValor(m.valorVenda) && Number(m.valorVenda) >= 0) o.valorVenda = Math.round(Number(m.valorVenda) * 100) / 100;
+    return o;
+  };
 
   /**
    * Utilizou material?  true = Sim · false = Não · null = ainda não informado.
@@ -158,12 +173,14 @@
     return `<div class="mat-table"><table class="materials materials--cod materials--val"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th>
       <th class="r">Valor un.</th><th class="r">Venda un.</th><th class="r">Total custo</th><th class="r">Total venda</th></tr></thead><tbody>${mats.map((m) => {
         const p = precoDe(mapa, m);
-        return `<tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${p ? '' : '<span class="sub faint">sem preço na lista</span>'}</td>
+        const custo = custoDe(m, mapa), venda = vendaDe(m, mapa);
+        const nota = temValor(m.valorVenda) ? '<span class="sub faint">valor lançado na OS</span>' : p ? '' : '<span class="sub faint">sem preço na lista</span>';
+        return `<tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${nota}</td>
           <td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td>
-          <td class="mono-num r">${reais(p && p.valor)}</td><td class="mono-num r">${reais(p && p.valorVenda)}</td>
-          <td class="mono-num r">${reais(mult(m.quantidade, p && p.valor))}</td><td class="mono-num r"><b>${reais(mult(m.quantidade, p && p.valorVenda))}</b></td></tr>`;
+          <td class="mono-num r">${reais(custo)}</td><td class="mono-num r">${reais(venda)}</td>
+          <td class="mono-num r">${reais(mult(m.quantidade, custo))}</td><td class="mono-num r"><b>${reais(mult(m.quantidade, venda))}</b></td></tr>`;
       }).join('')}</tbody>
-      <tfoot><tr><td colspan="5"><span class="faint">Valores da lista de Materiais atual${t.semPreco ? ` · ${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'}` : ''}</span></td>
+      <tfoot><tr><td colspan="5"><span class="faint">Venda: valor lançado na OS ou, sem ele, o da lista de Materiais${t.semPreco ? ` · ${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'}` : ''}</span></td>
         <td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.custo))}</b></td><td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.venda))}</b></td></tr></tfoot></table></div>`;
   }
 
@@ -201,13 +218,17 @@
 
   /**
    * Liga o editor. `getItens()` devolve o array a ser alterado (sempre o atual);
-   * `onChange()` é chamado após incluir/remover.
+   * `onChange()` é chamado após incluir/remover/alterar.
+   * opts.editarValores (supervisão, Corrigir materiais): cada item tem quantidade e
+   * valor unitário de venda editáveis direto na lista.
    */
   function bindEditor(root, p, getItens, opts = {}) {
     const $ = (id) => VG.$('#' + p + '-' + id, root);
     const cod = $('cod'), desc = $('desc'), qtd = $('qtd'), un = $('un'), list = $('list');
     const idx = indice();
     const valores = verValores();
+    const editar = valores && !!opts.editarValores;
+    const dinheiro = (v) => (temValor(v) ? Number(v).toFixed(2).replace('.', ',') : '');
     const porCodigo = (c) => { const n = VG.norm(c); const r = n && idx.find((x) => x.cod === n); return r && r.c; };
     const porDesc = (d) => { const n = VG.norm(d); const r = n && idx.find((x) => x.desc === n); return r && r.c; };
     const setUn = (u) => {
@@ -297,18 +318,58 @@
         return `<span class="mat-val">${VG.esc(reais(p.valorVenda))} un. · total ${VG.esc(reais(mult(m.quantidade, p.valorVenda)))}</span><span class="mat-val">custo ${VG.esc(reais(mult(m.quantidade, p.valor)))}</span>`;
       };
       const t = valores && itens.length ? totais(itens, mapa) : null;
+      if (editar && itens.length) return drawEditavel(itens, mapa);
       list.innerHTML = itens.length ? itens.map((m) => `
         <li>${VG.icon('box')}<span>${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span><b>${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}${valorItem(m)}</b>
           <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
           + (t ? `<li class="mat-total"><span>Total (${t.n} ${t.n === 1 ? 'item' : 'itens'})${t.semPreco ? ` <small class="faint">· ${t.semPreco} sem preço</small>` : ''}</span><b>${VG.esc(VG.fmtMoney(t.venda))}<span class="mat-val">custo ${VG.esc(VG.fmtMoney(t.custo))}</span></b></li>` : '')
         : `<li class="faint" style="justify-content:center">${VG.esc(opts.vazio || 'Nenhum material adicionado.')}</li>`;
-      VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => {
-        const arr = getItens();
-        const i = arr.findIndex((m) => m.id === b.dataset.rm);
-        if (i >= 0) arr.splice(i, 1);
-        opts.onChange && opts.onChange();
-        draw();
-      }));
+      ligarRemover();
+    };
+    const ligarRemover = () => VG.$$('[data-rm]', list).forEach((b) => (b.onclick = () => {
+      const arr = getItens();
+      const i = arr.findIndex((m) => m.id === b.dataset.rm);
+      if (i >= 0) arr.splice(i, 1);
+      opts.onChange && opts.onChange();
+      draw();
+    }));
+    /** Supervisão: quantidade e valor unitário de venda editáveis em cada item (inclusive os do técnico) */
+    const drawEditavel = (itens, mapa) => {
+      // item sem valor lançado começa com o valor da lista (pode ser trocado)
+      itens.forEach((m) => { if (!temValor(m.valorVenda)) { const v = vendaDe(m, mapa); if (v != null) m.valorVenda = v; } });
+      const totalTxt = () => { const t = totais(getItens(), mapa); return `${VG.fmtMoney(t.venda)}`; };
+      list.innerHTML = itens.map((m) => `
+        <li class="mat-li-ed" data-id="${VG.esc(m.id)}">${VG.icon('box')}
+          <span class="mat-li-ed__nome">${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span>
+          <label class="mat-ed"><small>Qtd.${m.unidade ? ' (' + VG.esc(m.unidade) + ')' : ''}</small><input class="input" data-q type="number" min="0" step="any" inputmode="decimal" value="${VG.esc(m.quantidade)}"></label>
+          <label class="mat-ed"><small>Valor un. (R$)</small><input class="input" data-v inputmode="decimal" placeholder="0,00" autocomplete="off" value="${VG.esc(dinheiro(m.valorVenda))}"></label>
+          <span class="mat-ed__tot"><small>Total</small><b data-sub>${VG.esc(reais(mult(m.quantidade, m.valorVenda)))}</b></span>
+          <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
+        + `<li class="mat-total"><span>Total (${itens.length} ${itens.length === 1 ? 'item' : 'itens'})</span><b data-total>${VG.esc(totalTxt())}</b></li>`;
+      VG.$$('li[data-id]', list).forEach((li) => {
+        const m = getItens().find((x) => x.id === li.dataset.id);
+        const q = VG.$('[data-q]', li), v = VG.$('[data-v]', li);
+        const atualizar = () => {
+          VG.$('[data-sub]', li).textContent = reais(mult(m.quantidade, m.valorVenda));
+          VG.$('[data-total]', list).textContent = totalTxt();
+          opts.onChange && opts.onChange();
+        };
+        q.addEventListener('input', () => {
+          const n = Number(String(q.value).replace(',', '.'));
+          q.closest('.mat-ed').classList.toggle('invalid', !(n > 0));
+          if (n > 0) { m.quantidade = Math.round(n * 1000) / 1000; atualizar(); }
+        });
+        v.addEventListener('input', () => {
+          const n = VG.parseMoney(v.value);
+          const ruim = n !== null && !(n >= 0);
+          v.closest('.mat-ed').classList.toggle('invalid', ruim);
+          if (ruim) return;
+          if (n == null) delete m.valorVenda; else m.valorVenda = Math.round(n * 100) / 100;
+          atualizar();
+        });
+        v.addEventListener('blur', () => { v.value = dinheiro(m.valorVenda); });
+      });
+      ligarRemover();
     };
 
     // código ou nome digitado por inteiro (sem tocar na lista): completa o outro campo
@@ -360,5 +421,5 @@
   /** "MAT-001 Sensor (4 unidade(s)); Cabo UTP (10 metro(s))" — usado no histórico */
   const resumo = (mats) => (mats || []).map((m) => `${m.codigo ? m.codigo + ' ' : ''}${m.descricao} (${m.quantidade}${m.unidade ? ' ' + m.unidade : ''})`).join('; ');
 
-  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor, totais, verValores };
+  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor, totais, verValores, vendaDe };
 })();
