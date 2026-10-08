@@ -136,9 +136,9 @@
   /** Tipos de OS: os atuais + algum tipo antigo que ainda exista (ex.: OS abertas antes desta versão) */
   VG.tiposCom = (...extras) => VG.TIPOS_ATENDIMENTO.concat(extras.filter((t) => t && !VG.TIPOS_ATENDIMENTO.includes(t)));
   /** Problemas mais comuns — escolhidos pela setinha na descrição do problema (maiúsculas, ordem alfabética) */
-  VG.PROBLEMAS = ['ACESSO CFTV', 'BATERIA DA CENTRAL BAIXA', 'BATERIA DO SENSOR BAIXA', 'BOTÃO DE PÂNICO', 'CÂMERA APAGADA',
-    'CENTRAL DESCONECTADA', 'CERCA ELÉTRICA', 'DESMOBILIZAÇÃO CANCELAMENTO DE CONTRATO', 'DISPARO', 'INSTALAR',
-    'PENDÊNCIA CABEAMENTO', 'PENDÊNCIA CENTRAL', 'PENDÊNCIA CFTV', 'RETIRADA PARCIAL', 'REVISÃO GERAL', 'SIRENE', 'TECLADO', 'ZONA ANULADA']
+  VG.PROBLEMAS = ['ACESSO CFTV','ATUALIZAR CENTRAL', 'BATERIA DA CENTRAL BAIXA', 'BATERIA DO SENSOR BAIXA', 'BOTÃO DE PÂNICO', 'CÂMERA APAGADA',
+    'CENTRAL OFFLINE', 'CERCA ELÉTRICA', 'DESMOBILIZAÇÃO CANCELAMENTO DE CONTRATO','DETECTOR', 'DISPARO','DVR OFF LINE','ESCOLA', 'INSTALAR','INTERFONE',
+    'PENDÊNCIA CABEAMENTO', 'PENDÊNCIA ALARME', 'PENDÊNCIA CFTV','RASTREADOR', 'RETIRADA PARCIAL','RETIRADA TOTAL', 'REVISÃO GERAL','SENSOR', 'SIRENE', 'TECLADO','TROCA DE TECNOLOGIA', 'ZONA ANULADA']
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   VG.EQUIPAMENTOS = ['Câmera', 'DVR/NVR', 'Alarme', 'Central de alarme', 'Controle de acesso', 'Cerca elétrica', 'Interfone', 'Portão eletrônico', 'PABX', 'Rede', 'Outro'];
   /** Valor em reais: 1234.5 → R$ 1.234,50 */
