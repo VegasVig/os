@@ -137,7 +137,7 @@
   VG.tiposCom = (...extras) => VG.TIPOS_ATENDIMENTO.concat(extras.filter((t) => t && !VG.TIPOS_ATENDIMENTO.includes(t)));
   /** Problemas mais comuns — escolhidos pela setinha na descrição do problema (maiúsculas, ordem alfabética) */
   VG.PROBLEMAS = ['ACESSO CFTV','ATUALIZAR CENTRAL', 'BATERIA DA CENTRAL BAIXA', 'BATERIA DO SENSOR BAIXA', 'BOTÃO DE PÂNICO', 'CÂMERA APAGADA',
-    'CENTRAL OFFLINE', 'CERCA ELÉTRICA', 'DESMOBILIZAÇÃO CANCELAMENTO DE CONTRATO','DETECTOR', 'DISPARO','DVR OFF LINE','ESCOLA', 'INSTALAR','INTERFONE',
+    'CENTRAL OFFLINE', 'CERCA ELÉTRICA', 'DESMOBILIZAÇÃO CANCELAMENTO DE CONTRATO','DETECTOR', 'DISPARO','DVR OFF LINE','ERRO DE HD','ESCOLA', 'INSTALAR','INTERFONE',
     'PENDÊNCIA CABEAMENTO', 'PENDÊNCIA ALARME', 'PENDÊNCIA CFTV','RASTREADOR', 'RETIRADA PARCIAL','RETIRADA TOTAL', 'REVISÃO GERAL','SENSOR', 'SIRENE', 'TECLADO','TROCA DE TECNOLOGIA', 'ZONA ANULADA']
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   VG.EQUIPAMENTOS = ['Câmera', 'DVR/NVR', 'Alarme', 'Central de alarme', 'Controle de acesso', 'Cerca elétrica', 'Interfone', 'Portão eletrônico', 'PABX', 'Rede', 'Outro'];
