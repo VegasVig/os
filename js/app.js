@@ -413,6 +413,7 @@
       if (rev === VG.Store.rev() && !forcar) return;
       const antes = new Set(VG.Store.list('ordens').map((o) => o.id));
       const devAntes = new Set(VG.Store.list('ordens').filter((o) => o.devolucao).map((o) => o.id + '|' + o.devolucao.em));
+      const pedAntes = new Map(VG.Store.list('ordens').map((o) => [o.id, (o.pedidos || []).length]));
       const pendAntes = new Set(VG.Store.list('ordens').filter((o) => !VG.ENCERRADAS.includes(o.status) && o.status !== 'aguardando_cliente').map((o) => o.id));
       await VG.Auth.restore();
       if (sess.papel === 'tecnico') {
@@ -427,6 +428,13 @@
           .forEach((o) => {
             VG.toast(`OS #${o.numero} (${(o.cliente && o.cliente.nome) || 'cliente'}) foi resolvida por telefone pela supervisão. Não precisa ir.`, 'info', 9000);
             try { navigator.vibrate && navigator.vibrate(150); } catch (e) {}
+          });
+        // novo pedido incluído pela supervisão numa OS que já estava com o técnico
+        VG.Store.list('ordens').filter((o) => o.tecnicoId === sess.tecnicoId && pedAntes.has(o.id) && (o.pedidos || []).length > pedAntes.get(o.id) && !VG.isConcluida(o.status))
+          .forEach((o) => {
+            const ult = o.pedidos[o.pedidos.length - 1] || {};
+            VG.toast(`Novo pedido na OS #${o.numero} (${(o.cliente && o.cliente.nome) || 'cliente'}): ${String(ult.problema || '').split('\n')[0].slice(0, 120)}`, 'warn', 10000);
+            try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
           });
         // OS reaberta pela supervisão para completar
         VG.Store.list('ordens').filter((o) => o.devolucao && o.tecnicoId === sess.tecnicoId && antes.has(o.id) && !devAntes.has(o.id + '|' + o.devolucao.em))

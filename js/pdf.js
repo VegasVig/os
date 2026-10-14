@@ -170,7 +170,7 @@
       y += 5;
       let total = 0;
       mats.forEach((m, i) => {
-        const ln = doc.splitTextToSize(safe(m.descricao), comValor ? wMat : CW - 90);
+        const ln = doc.splitTextToSize(safe(m.descricao + (VG.Mat.modalidadeTxt(m) ? ` (${VG.Mat.modalidadeTxt(m)})` : '')), comValor ? wMat : CW - 90);
         const cod = doc.splitTextToSize(safe(m.codigo || '-'), comValor ? 22 : 30);
         const h = Math.max(ln.length, cod.length) * 4.4 + 2.4;
         ensure(h + 1);
@@ -303,7 +303,7 @@
       const linhas = mats.map((m, i) => {
         const t = vUn[i] == null ? null : Math.round(Number(m.quantidade || 0) * vUn[i] * 100) / 100;
         if (t != null) total += t;
-        return `<tr>${td(m.codigo || '—')}${td(m.descricao)}${td(m.quantidade + ' ' + (m.unidade || ''), 1)}${val ? td(vUn[i] == null ? '—' : VG.fmtMoney(vUn[i]), 1) + td(t == null ? '—' : VG.fmtMoney(t), 1) : ''}</tr>`;
+        return `<tr>${td(m.codigo || '—')}${td(m.descricao + (VG.Mat.modalidadeTxt(m) ? ` (${VG.Mat.modalidadeTxt(m)})` : ''))}${td(m.quantidade + ' ' + (m.unidade || ''), 1)}${val ? td(vUn[i] == null ? '—' : VG.fmtMoney(vUn[i]), 1) + td(t == null ? '—' : VG.fmtMoney(t), 1) : ''}</tr>`;
       }).join('');
       return `<table style="width:100%;font-size:12px;border-collapse:collapse"><tr>${th('Código')}${th('Material')}${th('Quantidade', 1)}${val ? th('Valor un.', 1) + th('Total', 1) : ''}</tr>${linhas}
         ${val ? `<tr><td colspan="4" style="padding:6px 4px;text-align:right;font-weight:700">Total dos materiais</td><td style="padding:6px 4px;text-align:right;font-weight:700">${esc(VG.fmtMoney(Math.round(total * 100) / 100))}</td></tr>` : ''}</table>`;

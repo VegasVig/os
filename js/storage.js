@@ -210,6 +210,13 @@
       agendar(col, obj).catch(() => { /* erro já exibido ao usuário */ });
       return obj;
     },
+    /** Igual ao save, mas espera a confirmação do servidor (erro volta para quem chamou) */
+    saveAsync(col, obj) {
+      if (!obj.id) obj.id = VG.uid();
+      obj.atualizadoEm = VG.nowISO();
+      this.put(col, obj);
+      return agendar(col, obj).then(() => obj);
+    },
     saveMany(col, items) {
       items.forEach((obj) => { if (!obj.id) obj.id = VG.uid(); obj.atualizadoEm = VG.nowISO(); mem[col].push(obj); });
       pendentes++; atualizarIndicador();

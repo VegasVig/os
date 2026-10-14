@@ -26,6 +26,13 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **Cliente com OS aberta:** ao escolher um cliente em **Nova ordem de serviço**, aparece um aviso se ele já tem OS **Aberta**, **Aguardando técnico** ou **Em atendimento**. Ao tocar em **Criar ordem de serviço**, o sistema pergunta:
+  - **Incluir na OS #…** — o problema novo entra no fim da descrição da OS aberta (com data e quem incluiu), os materiais para levar são somados e a prioridade sobe se a nova for maior. Fica no histórico. O técnico recebe o aviso **Novo pedido** no celular em até 30 segundos.
+  - **Abrir nova OS** — cria outra OS normalmente.
+  - Se o técnico finalizar a OS antes de você confirmar, o servidor recusa a inclusão e pede para abrir uma nova OS.
+  - Cada supervisora só enxerga as OS dela: uma OS aberta pela outra supervisora para o mesmo cliente **não** aparece no aviso.
+- **Venda ou aluguel nos materiais utilizados:** em **Lançar/Corrigir materiais utilizados**, cada item tem **Venda** ou **Aluguel** (e o atalho **Marcar todos como**). A marcação aparece na conferência (total em venda e em aluguel), nas tabelas da OS, no PDF (ao lado do material), no histórico e em duas colunas novas na exportação CSV de **Relatórios**. É opcional: itens sem marcação aparecem como "sem marcar".
+- **Para ativar:** cole o `Code.gs` novo e publique uma **nova versão** (sem ele, a marcação venda/aluguel não é gravada).
 - **Resolver por telefone:** quando a supervisão resolve o problema por telefone, abra a OS e toque em **Resolver por telefone** (no topo da OS). Vale para OS **Aberta**, **Aguardando técnico** ou **Em atendimento**.
   - Informe **com quem falou** e **como foi resolvido** (obrigatórios); telefone e o que estava acontecendo são opcionais.
   - A OS fecha **sem visita do técnico e sem assinaturas** e vai para **Realizadas**. Com a opção **Já marcar como processada** (vem marcada), vai direto para **Processadas**.

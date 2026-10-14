@@ -41,6 +41,11 @@
   const devolvida = (o) => !!(o && o.devolucao) && o.status === 'em_atendimento';
   /** OS que a supervisão pode fechar por telefone (ainda não finalizadas pelo técnico) */
   const PODE_REMOTO = ['aberta', 'aguardando_tecnico', 'em_atendimento'];
+  /** OS em que ainda dá para incluir um novo pedido (o técnico não finalizou) */
+  const ACEITA_PEDIDO = PODE_REMOTO;
+  const abertasDoCliente = (clienteId) => (!clienteId ? [] : S().list('ordens')
+    .filter((o) => o.clienteId === clienteId && ACEITA_PEDIDO.includes(o.status))
+    .sort((a, b) => b.numero - a.numero));
   const remota = (o) => !!(o && o.resolucaoRemota) && VG.isConcluida(o.status);
   const PESO = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
   const COR_PRIO = { urgente: 'red', alta: 'orange', normal: 'blue', baixa: 'gray' };
@@ -316,6 +321,7 @@
                 <div class="input-group">${VG.icon('search')}<input id="os-cli-q" class="input" placeholder="Digite nome, código, CPF/CNPJ, rua ou bairro" autocomplete="off"></div></div>
               <div class="field span-all"><label for="os-cli">Selecionar cliente cadastrado<span class="req">*</span></label>
                 <select id="os-cli" name="clienteId" class="select">${VG.options(clientes.map((x) => ({ value: x.id, label: `${x.codigo ? x.codigo + ' · ' : ''}${x.nome} — ${[x.endereco, x.numero].filter(Boolean).join(', ') || 'sem endereço'}${x.bairro ? ' (' + x.bairro + ')' : ''} · ${x.cpf_cnpj ? VG.fmtDoc(x.cpf_cnpj) : 'sem doc.'}` })), clienteSel, 'Escolha um cliente…')}</select></div>
+              ${editing ? '' : '<div class="span-all hidden" id="os-cli-aberta"></div>'}
               <div class="field span-2"><label for="c-nome">Nome / Razão social</label><input id="c-nome" name="c_nome" class="input" value="${v(c.nome)}"></div>
               <div class="field"><label for="c-doc">CPF/CNPJ</label><input id="c-doc" name="c_cpf_cnpj" class="input" data-mask="doc" value="${v(VG.fmtDoc(c.cpf_cnpj))}"></div>
               <div class="field"><label for="c-tel">Telefone</label><input id="c-tel" name="c_telefone" class="input" data-mask="phone" inputmode="tel" value="${v(VG.fmtPhone(c.telefone))}"></div>
@@ -397,8 +403,16 @@
       set('c_nome', cli.nome); set('c_cpf_cnpj', VG.fmtDoc(cli.cpf_cnpj)); set('c_telefone', VG.fmtPhone(cli.telefone)); set('c_email', cli.email);
       set('c_endereco', cli.endereco); set('c_numero', cli.numero); set('c_complemento', cli.complemento); set('c_bairro', cli.bairro);
       set('c_cidade', cli.cidade); set('c_estado', cli.estado); set('c_cep', VG.fmtCEP(cli.cep));
+      avisoAbertas(cli.id);
     };
-    selCli.onchange = () => fillCliente(S().get('clientes', selCli.value));
+    const avisoAbertas = (cid) => {
+      const box = VG.$('#os-cli-aberta', el);
+      if (!box) return;
+      const ab = abertasDoCliente(cid);
+      box.classList.toggle('hidden', !ab.length);
+      box.innerHTML = ab.length ? `<div class="notice">${VG.icon('alert')}<div>Este cliente já tem ${ab.length === 1 ? 'uma OS aberta' : ab.length + ' OS abertas'}: ${ab.map((o) => `<b>#${o.numero}</b> (${VG.esc(o.tipo)} · ${VG.esc((VG.STATUS[o.status] || {}).label || o.status)})`).join(', ')}. Ao criar, você escolhe se inclui este pedido na OS aberta ou abre outra.</div></div>` : '';
+    };
+    selCli.onchange = () => { fillCliente(S().get('clientes', selCli.value)); avisoAbertas(selCli.value); };
     // busca rápida: filtra a lista (útil com milhares de clientes)
     const rotulo = (x) => `${x.codigo ? x.codigo + ' · ' : ''}${x.nome} — ${[x.endereco, x.numero].filter(Boolean).join(', ') || 'sem endereço'}${x.bairro ? ' (' + x.bairro + ')' : ''} · ${x.cpf_cnpj ? VG.fmtDoc(x.cpf_cnpj) : 'sem doc.'}`;
     VG.$('#os-cli-q', el).addEventListener('input', VG.debounce((e) => {
@@ -424,6 +438,16 @@
       if (!fd.c_nome.trim()) return fail('#c-nome', 'Informe o nome do cliente.');
       if (!fd.problema.trim()) return fail('#os-prob', 'Descreva o problema relatado.');
 
+      // cliente com OS aberta: incluir o pedido nela ou abrir outra
+      let alvo = 'nova';
+      if (!editing) {
+        const abertas = abertasDoCliente(fd.clienteId);
+        if (abertas.length) {
+          alvo = await escolherOSAberta(abertas, fd.c_nome.trim());
+          if (!alvo) return;
+        }
+      }
+
       const btn = VG.$('#os-submit', el);
       VG.setBusy(btn, true, editing ? 'Salvando…' : 'Criando…');
       const cliente = {};
@@ -438,6 +462,12 @@
       const autor = me().nome || 'Supervisora';
 
       try {
+        if (!editing && alvo !== 'nova') {
+          const os2 = S().get('ordens', alvo);
+          if (!os2 || !ACEITA_PEDIDO.includes(os2.status)) throw new Error('a OS escolhida não está mais aberta. Crie de novo e escolha "Abrir nova OS".');
+          await incluirPedido(os2, { problema: fd.problema.trim(), materiaisLevar, prioridade: fd.prioridade || 'normal', equipamento, autor });
+          return;
+        }
         if (!editing) {
           const nova = {
             numero: 0, criadaEm: VG.nowISO(), criadaPor: autor,
@@ -489,6 +519,72 @@
   }
 
   const resumoMats = (mats) => VG.Mat.resumo(mats);
+
+  /** Cliente com OS aberta: devolve o id da OS escolhida, 'nova' ou null (voltou) */
+  function escolherOSAberta(abertas, nomeCliente) {
+    return new Promise((resolve) => {
+      let resp = null;
+      const st = (o) => (VG.STATUS[o.status] || {}).label || o.status;
+      const um = abertas.length === 1;
+      VG.modal({
+        title: um ? `Cliente já tem a OS #${abertas[0].numero} aberta` : `Cliente tem ${abertas.length} OS abertas`, size: 'lg',
+        body: `
+          <p style="margin:0 0 1rem"><b>${VG.esc(nomeCliente)}</b> já tem ${um ? 'uma ordem de serviço' : 'ordens de serviço'} em aberto. Você pode <b>incluir este pedido na OS aberta</b> (o técnico faz tudo na mesma visita) ou <b>abrir outra OS</b>.</p>
+          ${abertas.map((o, i) => `
+            <label class="os-pedido-op">
+              <input type="radio" name="op-os" value="${VG.esc(o.id)}" ${i === 0 ? 'checked' : ''}>
+              <div><b>OS #${o.numero}</b> · ${VG.esc(o.tipo)} · ${VG.badge(o.status)}
+                <br><small>Aberta em ${VG.fmtDateTime(o.criadaEm)}${o.criadaPor ? ' por ' + VG.esc(o.criadaPor) : ''} · Técnico: ${VG.esc(o.tecnicoNome || 'não definido')}${o.prazoData ? ' · Prevista ' + VG.fmtInputDate(o.prazoData) + (o.prazoHora ? ' ' + VG.esc(o.prazoHora) : '') : ''}${(o.pedidos || []).length ? ` · ${o.pedidos.length + 1} pedidos` : ''}</small>
+                <p>${VG.esc(String(o.problema || '').slice(0, 220))}${String(o.problema || '').length > 220 ? '…' : ''}</p>
+                ${o.status === 'em_atendimento' ? `<small>${VG.icon('alert')} ${VG.esc((o.tecnicoNome || 'O técnico').split(' ')[0])} já está no atendimento: ele vê o novo pedido ao atualizar a OS.</small>` : ''}
+              </div>
+            </label>`).join('')}
+          <p class="hint" style="margin:1rem 0 0">Ao incluir: a descrição entra no fim do problema da OS, os materiais para levar são somados e a prioridade sobe se a nova for maior. Tudo fica no histórico.</p>`,
+        onClose: () => resolve(resp),
+        actions: [
+          { label: 'Voltar' },
+          { label: 'Abrir nova OS', cls: 'btn', icon: 'plus', onClick: () => { resp = 'nova'; } },
+          { label: um ? `Incluir na OS #${abertas[0].numero}` : 'Incluir na OS marcada', cls: 'btn-primary', icon: 'check', onClick: (m) => {
+            const r = m.el.querySelector('input[name=op-os]:checked');
+            if (!r) { VG.toast('Marque a OS em que o pedido será incluído.', 'warn'); return false; }
+            resp = r.value;
+          } },
+        ],
+      });
+    });
+  }
+
+  /** Inclui um novo pedido numa OS ainda não finalizada pelo técnico */
+  async function incluirPedido(os, { problema, materiaisLevar, prioridade, equipamento, autor }) {
+    const antes = JSON.parse(JSON.stringify(os));
+    const agora = VG.nowISO();
+    const equip = [equipamento.tipo, equipamento.marca, equipamento.modelo, equipamento.serie && 'Série ' + equipamento.serie, equipamento.local && 'Local: ' + equipamento.local].filter(Boolean).join(' · ');
+    const texto = problema + (equip ? `\nEquipamento: ${equip}` : '');
+    os.problema = `${String(os.problema || '').trim()}\n\n— NOVO PEDIDO · ${VG.fmtDateTime(agora)} · ${autor} —\n${texto}`;
+    const levar = (os.materiaisLevar || []).map((m) => VG.Mat.limpar(m));
+    materiaisLevar.forEach((n) => {
+      const igual = levar.find((m) => m.unidade === n.unidade && (n.codigo ? VG.norm(m.codigo) === VG.norm(n.codigo) : !m.codigo && VG.norm(m.descricao) === VG.norm(n.descricao)));
+      if (igual) igual.quantidade = Math.round((Number(igual.quantidade) + Number(n.quantidade)) * 1000) / 1000;
+      else levar.push(n);
+    });
+    os.materiaisLevar = levar;
+    const subiu = (PESO[prioridade] ?? 2) < (PESO[os.prioridade] ?? 2);
+    if (subiu) os.prioridade = prioridade;
+    os.pedidos = (os.pedidos || []).concat([{ em: agora, por: autor, problema: texto, materiais: materiaisLevar }]);
+    S().hist(os, `Novo pedido incluído: ${texto.replace(/\n/g, ' · ')}`, autor);
+    if (materiaisLevar.length) S().hist(os, `Materiais para levar incluídos: ${resumoMats(materiaisLevar)}.`, autor);
+    if (subiu) S().hist(os, `Prioridade elevada para ${VG.PRIORIDADES[prioridade].label} pelo novo pedido.`, autor);
+    try {
+      await S().saveAsync('ordens', os);
+    } catch (e) {
+      Object.keys(os).forEach((k) => delete os[k]);
+      Object.assign(os, antes);
+      throw e;
+    }
+    S().log(`Novo pedido incluído na OS #${os.numero}`, os.id, 'plus');
+    location.hash = '#/os/ver/' + os.id;
+    VG.toast(`Pedido incluído na OS #${os.numero}.${os.tecnicoNome ? ` ${os.tecnicoNome.split(' ')[0]} recebe o aviso no celular.` : ''}`, 'success', 6000);
+  }
 
   /** Problema da lista que abre a descrição (ex.: "DISPARO - zona 3") */
   function problemaDe(txt) {
@@ -721,7 +817,7 @@
           <div class="conf-row"><span>Utilizou material</span>${VG.Mat.usouBadge(os)}</div>
           <div class="conf-row"><span>Materiais para levar</span><b>${itens(nLevar)}</b></div>
           <div class="conf-row"><span>Materiais utilizados</span><b>${itens(nUsados)}</b></div>
-          ${nUsados ? (() => { const t = VG.Mat.totais(os.atendimento.materiais); return `<div class="conf-row"><span>Valor dos materiais utilizados</span><b>${VG.esc(VG.fmtMoney(t.venda))} <small class="faint">custo ${VG.esc(VG.fmtMoney(t.custo))}</small></b></div>${t.semPreco ? `<div class="conf-row"><span></span><small class="faint">${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'} na lista de Materiais</small></div>` : ''}`; })() : ''}
+          ${nUsados ? (() => { const t = VG.Mat.totais(os.atendimento.materiais); return `<div class="conf-row"><span>Valor dos materiais utilizados</span><b>${VG.esc(VG.fmtMoney(t.venda))} <small class="faint">custo ${VG.esc(VG.fmtMoney(t.custo))}</small></b></div><div class="conf-row"><span>Venda / aluguel</span>${t.semModalidade === t.n ? '<small class="faint">Não marcado — use Corrigir materiais utilizados</small>' : `<b>${VG.esc(VG.Mat.resumoModalidade(t))}</b>`}</div>${t.semPreco ? `<div class="conf-row"><span></span><small class="faint">${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'} na lista de Materiais</small></div>` : ''}`; })() : ''}
           ${retirada ? `<div class="conf-row"><span>E-mail "Cliente retirado"</span>${em.enviadoEm ? `<b>Enviado em ${VG.fmtDateTime(em.enviadoEm)}</b>` : em.erro ? `<b class="conf-err">Não enviado</b>` : '<b>Será enviado ao processar</b>'}</div>
             ${em.erro && !em.enviadoEm ? `<div class="notice">${VG.icon('alert')}<div>O e-mail de cliente retirado não foi enviado: ${VG.esc(em.erro)}</div></div>` : ''}` : ''}
           ${st === 'processada' ? `<div class="notice notice--info">${VG.icon('check')}<div><strong>Conferida e processada</strong> em ${VG.fmtDateTime(os.processadaEm)}${os.processadaPor ? ' por ' + VG.esc(os.processadaPor) : ''}.</div></div>` : ''}
@@ -874,7 +970,7 @@
           </div></div>
         <div id="cm-nao-box" class="notice notice--info ${estado.usou === false ? '' : 'hidden'}">${VG.icon('info')}<div>Não foi utilizado material.</div></div>
         <div id="cm-ed" class="${estado.usou === true ? '' : 'hidden'}">${VG.Mat.editorHTML('cm', { levar: os.materiaisLevar || [], qtdLabel: 'Qtd. utilizada' })}
-          <p class="hint" style="margin:.6rem 0 0">Ajuste a quantidade e o <b>valor unitário</b> de cada item direto na lista. Itens sem valor lançado começam com o valor de venda da lista de Materiais. Esses valores saem no PDF da OS.</p></div>`,
+          <p class="hint" style="margin:.6rem 0 0">Marque se cada item é <b>Venda</b> ou <b>Aluguel</b> e ajuste a quantidade e o <b>valor unitário</b> direto na lista. Itens sem valor lançado começam com o valor de venda da lista de Materiais. Esses valores saem no PDF da OS.</p></div>`,
       onOpen: (m) => {
         VG.Mat.bindEditor(m, 'cm', () => estado.itens, { levar: os.materiaisLevar || [], editarValores: true });
         VG.$$('input[name=cm-usou]', m).forEach((r) => (r.onchange = () => {

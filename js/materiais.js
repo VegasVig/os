@@ -38,17 +38,27 @@
   const custoDe = (m, mapa) => { const p = precoDe(mapa, m); return p && temValor(p.valor) ? Number(p.valor) : (m && temValor(m.valor) ? Number(m.valor) : null); };
   const mult = (q, v) => (v == null || v === '' ? null : Math.round(Number(q || 0) * Number(v) * 100) / 100);
   const reais = (v) => (v == null || v === '' ? '—' : VG.fmtMoney(v));
+  /** Venda ou aluguel: marcado pela supervisão em cada material utilizado */
+  const MODALIDADES = { venda: 'Venda', aluguel: 'Aluguel' };
+  const modalidadeDe = (m) => (m && MODALIDADES[m.modalidade] ? m.modalidade : '');
+  const modalidadeTxt = (m) => (modalidadeDe(m) ? MODALIDADES[m.modalidade] : '');
+  const modalidadeTag = (m) => (modalidadeDe(m) ? ` <span class="mat-mod-tag mat-mod-tag--${m.modalidade}">${MODALIDADES[m.modalidade]}</span>` : '');
   /** Totais (custo e venda) de uma lista de materiais pela lista de preços atual */
   function totais(mats, mapa) {
     mapa = mapa || precos();
-    let custo = 0, venda = 0, semPreco = 0;
+    let custo = 0, venda = 0, semPreco = 0, emVenda = 0, emAluguel = 0, semModalidade = 0;
     (mats || []).forEach((m) => {
       const c = mult(m.quantidade, custoDe(m, mapa)), v = mult(m.quantidade, vendaDe(m, mapa));
       if (c == null && v == null) semPreco++;
       custo += c || 0; venda += v || 0;
+      const md = modalidadeDe(m);
+      if (md === 'venda') emVenda += v || 0; else if (md === 'aluguel') emAluguel += v || 0; else semModalidade++;
     });
-    return { custo: Math.round(custo * 100) / 100, venda: Math.round(venda * 100) / 100, semPreco, n: (mats || []).length };
+    const r2 = (x) => Math.round(x * 100) / 100;
+    return { custo: r2(custo), venda: r2(venda), semPreco, n: (mats || []).length, emVenda: r2(emVenda), emAluguel: r2(emAluguel), semModalidade };
   }
+  /** "Venda R$ 120,00 · Aluguel R$ 80,00 · 1 sem marcar" */
+  const resumoModalidade = (t) => [`Venda ${VG.fmtMoney(t.emVenda)}`, `Aluguel ${VG.fmtMoney(t.emAluguel)}`, t.semModalidade ? `${t.semModalidade} sem marcar` : ''].filter(Boolean).join(' · ');
   /** Lista de materiais ainda não chegou do servidor (Code.gs antigo) */
   const servidorSemLista = () => !!S().semListaMateriais && S().semListaMateriais();
 
@@ -59,6 +69,7 @@
       quantidade: Number(m.quantidade) || 0, unidade: m.unidade || VG.UNIDADES[0],
     };
     if (temValor(m.valorVenda) && Number(m.valorVenda) >= 0) o.valorVenda = Math.round(Number(m.valorVenda) * 100) / 100;
+    if (modalidadeDe(m)) o.modalidade = m.modalidade;
     return o;
   };
 
@@ -163,7 +174,7 @@
     if (!mats || !mats.length) return `<p class="faint" style="margin:0">${VG.esc(vazio)}</p>`;
     if (opts.valores && verValores()) return tabelaValoresHTML(mats, qtdLabel);
     return `<div class="mat-table"><table class="materials materials--cod"><thead><tr><th>Código</th><th>Material</th><th>${VG.esc(qtdLabel)}</th></tr></thead><tbody>${mats.map((m) => `
-      <tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table></div>`;
+      <tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${modalidadeTag(m)}</td><td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   /** Supervisão: Código | Material | Qtd. | Valor un. | Venda un. | Total custo | Total venda (+ totais) */
@@ -175,13 +186,14 @@
         const p = precoDe(mapa, m);
         const custo = custoDe(m, mapa), venda = vendaDe(m, mapa);
         const nota = temValor(m.valorVenda) ? '<span class="sub faint">valor lançado na OS</span>' : p ? '' : '<span class="sub faint">sem preço na lista</span>';
-        return `<tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${nota}</td>
+        return `<tr><td class="mono-num">${m.codigo ? VG.esc(m.codigo) : '<span class="faint">—</span>'}</td><td>${VG.esc(m.descricao)}${modalidadeTag(m)}${nota}</td>
           <td class="mono-num">${VG.esc(m.quantidade)} ${VG.esc(m.unidade || '')}</td>
           <td class="mono-num r">${reais(custo)}</td><td class="mono-num r">${reais(venda)}</td>
           <td class="mono-num r">${reais(mult(m.quantidade, custo))}</td><td class="mono-num r"><b>${reais(mult(m.quantidade, venda))}</b></td></tr>`;
       }).join('')}</tbody>
       <tfoot><tr><td colspan="5"><span class="faint">Venda: valor lançado na OS ou, sem ele, o da lista de Materiais${t.semPreco ? ` · ${t.semPreco} ${t.semPreco === 1 ? 'item sem preço' : 'itens sem preço'}` : ''}</span></td>
-        <td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.custo))}</b></td><td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.venda))}</b></td></tr></tfoot></table></div>`;
+        <td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.custo))}</b></td><td class="mono-num r"><b>${VG.esc(VG.fmtMoney(t.venda))}</b></td></tr>
+        ${t.semModalidade < t.n ? `<tr><td colspan="7" class="r"><span class="faint">${resumoModalidade(t)}</span></td></tr>` : ''}</tfoot></table></div>`;
   }
 
   /** Bloco "Utilizou material" + materiais utilizados (técnico, cliente e supervisão) */
@@ -338,22 +350,34 @@
       // item sem valor lançado começa com o valor da lista (pode ser trocado)
       itens.forEach((m) => { if (!temValor(m.valorVenda)) { const v = vendaDe(m, mapa); if (v != null) m.valorVenda = v; } });
       const totalTxt = () => { const t = totais(getItens(), mapa); return `${VG.fmtMoney(t.venda)}`; };
-      list.innerHTML = itens.map((m) => `
+      const modTxt = () => resumoModalidade(totais(getItens(), mapa));
+      list.innerHTML = `<li class="mat-mod-todos"><span>Marcar todos como</span>
+          <button type="button" class="btn btn-sm" data-todos="venda">Venda</button><button type="button" class="btn btn-sm" data-todos="aluguel">Aluguel</button></li>`
+        + itens.map((m) => `
         <li class="mat-li-ed" data-id="${VG.esc(m.id)}">${VG.icon('box')}
           <span class="mat-li-ed__nome">${m.codigo ? `<small class="mat-cod">${VG.esc(m.codigo)}</small>` : ''}${VG.esc(m.descricao)}</span>
           <label class="mat-ed"><small>Qtd.${m.unidade ? ' (' + VG.esc(m.unidade) + ')' : ''}</small><input class="input" data-q type="number" min="0" step="any" inputmode="decimal" value="${VG.esc(m.quantidade)}"></label>
+          <span class="mat-ed mat-mod"><small>Venda ou aluguel</small><span class="seg seg--xs">${Object.entries(MODALIDADES).map(([k, l]) => `
+            <input type="radio" name="${p}-mod-${VG.esc(m.id)}" id="${p}-mod-${k}-${VG.esc(m.id)}" value="${k}" data-mod ${m.modalidade === k ? 'checked' : ''}><label for="${p}-mod-${k}-${VG.esc(m.id)}">${l}</label>`).join('')}</span></span>
           <label class="mat-ed"><small>Valor un. (R$)</small><input class="input" data-v inputmode="decimal" placeholder="0,00" autocomplete="off" value="${VG.esc(dinheiro(m.valorVenda))}"></label>
           <span class="mat-ed__tot"><small>Total</small><b data-sub>${VG.esc(reais(mult(m.quantidade, m.valorVenda)))}</b></span>
           <button type="button" class="btn btn-ghost btn-icon" data-rm="${VG.esc(m.id)}" aria-label="Remover material">${VG.icon('trash')}</button></li>`).join('')
-        + `<li class="mat-total"><span>Total (${itens.length} ${itens.length === 1 ? 'item' : 'itens'})</span><b data-total>${VG.esc(totalTxt())}</b></li>`;
+        + `<li class="mat-total"><span>Total (${itens.length} ${itens.length === 1 ? 'item' : 'itens'})<small class="faint" data-modtot>${VG.esc(modTxt())}</small></span><b data-total>${VG.esc(totalTxt())}</b></li>`;
+      VG.$$('[data-todos]', list).forEach((b) => (b.onclick = () => {
+        getItens().forEach((m) => (m.modalidade = b.dataset.todos));
+        opts.onChange && opts.onChange();
+        draw();
+      }));
       VG.$$('li[data-id]', list).forEach((li) => {
         const m = getItens().find((x) => x.id === li.dataset.id);
         const q = VG.$('[data-q]', li), v = VG.$('[data-v]', li);
         const atualizar = () => {
           VG.$('[data-sub]', li).textContent = reais(mult(m.quantidade, m.valorVenda));
           VG.$('[data-total]', list).textContent = totalTxt();
+          VG.$('[data-modtot]', list).textContent = modTxt();
           opts.onChange && opts.onChange();
         };
+        VG.$$('[data-mod]', li).forEach((r) => r.addEventListener('change', () => { m.modalidade = r.value; atualizar(); }));
         q.addEventListener('input', () => {
           const n = Number(String(q.value).replace(',', '.'));
           q.closest('.mat-ed').classList.toggle('invalid', !(n > 0));
@@ -419,7 +443,7 @@
   }
 
   /** "MAT-001 Sensor (4 unidade(s)); Cabo UTP (10 metro(s))" — usado no histórico */
-  const resumo = (mats) => (mats || []).map((m) => `${m.codigo ? m.codigo + ' ' : ''}${m.descricao} (${m.quantidade}${m.unidade ? ' ' + m.unidade : ''})`).join('; ');
+  const resumo = (mats) => (mats || []).map((m) => `${m.codigo ? m.codigo + ' ' : ''}${m.descricao} (${m.quantidade}${m.unidade ? ' ' + m.unidade : ''}${modalidadeDe(m) ? ' · ' + modalidadeTxt(m) : ''})`).join('; ');
 
-  VG.Mat = { limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor, totais, verValores, vendaDe };
+  VG.Mat = { MODALIDADES, modalidadeDe, modalidadeTxt, resumoModalidade, limpar, resumo, usou, usouTexto, usouBadge, catalogo, indice, buscar, destacar, tabelaHTML, utilizadosHTML, editorHTML, bindEditor, totais, verValores, vendaDe };
 })();

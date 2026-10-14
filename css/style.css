@@ -1112,7 +1112,23 @@ html.is-saving::after {
 .mat-ed.invalid .input { border-color: var(--st-red); }
 .mat-ed__tot { display: flex; flex-direction: column; align-items: flex-end; min-width: 108px; }
 .mat-list li.mat-li-ed .mat-ed__tot b { margin-left: 0; }
+/* Venda ou aluguel (supervisão) */
+.mat-ed.mat-mod { width: auto; }
+.seg--xs { gap: .25rem; flex-wrap: nowrap; }
+.seg--xs label { padding: .38rem .6rem; font-size: .8rem; border-radius: 7px; min-height: 36px; }
+.mat-list li.mat-mod-todos { background: transparent; border: 0; padding: 0 0 .2rem; gap: .4rem; font-size: .8rem; color: var(--text-3); }
+.mat-list li.mat-total small[data-modtot] { display: block; font-weight: 400; font-size: .74rem; }
+.mat-mod-tag { display: inline-block; margin-left: .35rem; padding: .05rem .4rem; border-radius: 6px; font-size: .7rem; font-weight: 600; vertical-align: middle; border: 1px solid var(--line-strong); color: var(--text-2); }
+.mat-mod-tag--aluguel { border-color: var(--st-orange); color: var(--st-orange); }
+.mat-mod-tag--venda { border-color: var(--st-green); color: var(--st-green); }
+.os-pedido-op { display: flex; gap: .7rem; align-items: flex-start; padding: .75rem .9rem; border: 1px solid var(--line-strong); border-radius: 10px; cursor: pointer; }
+.os-pedido-op + .os-pedido-op { margin-top: .5rem; }
+.os-pedido-op:has(input:checked) { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
+.os-pedido-op input { margin-top: .25rem; }
+.os-pedido-op p { margin: .25rem 0 0; font-size: .85rem; color: var(--text-2); }
+.os-pedido-op small { color: var(--text-3); font-size: .78rem; }
 @media (max-width: 720px) {
   .mat-li-ed .mat-li-ed__nome { flex-basis: calc(100% - 2.2rem); }
   .mat-ed { width: auto; flex: 1 1 0; }
+  .mat-ed.mat-mod { flex-basis: 100%; }
 }

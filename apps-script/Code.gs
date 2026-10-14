@@ -61,6 +61,8 @@ const CAMPOS_CONF_ = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabe
   'devolucao', 'devolucoes', 'assinaturasAnteriores', 'resolucaoRemota'];
 /** OS que a supervisão pode fechar por telefone (ainda não finalizadas pelo técnico) */
 const PODE_RESOLVER_REMOTO_ = ['aberta', 'aguardando_tecnico', 'em_atendimento'];
+/** Material utilizado: venda ou aluguel (marcado pela supervisão) */
+const MODALIDADES_ = ['venda', 'aluguel'];
 /** OS que a supervisão pode devolver ao técnico para completar (antes de processar) */
 const PODE_DEVOLVER_ = ['aguardando_cliente', 'concluida', 'reaberta'];
 
@@ -278,6 +280,9 @@ const ACOES = {
         const atual = ler_('ordens').find((o) => o.id === obj.id);
         if (atual && !podeVerOS_(s, atual)) throw new Error('Esta OS foi aberta por outra supervisora.');
         if (!atual && !obj.criadaPorId) { obj.criadaPorId = s.userId; obj.criadaPor = s.nome; }
+        if (atual && (obj.pedidos || []).length > (atual.pedidos || []).length && PODE_RESOLVER_REMOTO_.indexOf(atual.status) < 0) {
+          throw new Error('A OS #' + atual.numero + ' já foi finalizada pelo técnico. Abra uma nova OS para este pedido.');
+        }
         if (atual) obj = mesclarSupervisao_(atual, obj);
         obj = extrairImagens_(obj, 'OS_' + obj.numero);
       }
@@ -859,7 +864,11 @@ function limparMats_(lista, antigos, aceitarVenda) {
     if (aceitarVenda) {
       const v = m.valorVenda === '' || m.valorVenda == null ? NaN : Number(String(m.valorVenda).replace(',', '.'));
       if (isFinite(v) && v >= 0) out.valorVenda = Math.round(v * 100) / 100;
-    } else if (antigos && ant[out.id] && ant[out.id].valorVenda != null) out.valorVenda = ant[out.id].valorVenda;
+      if (MODALIDADES_.indexOf(m.modalidade) >= 0) out.modalidade = m.modalidade;
+    } else if (antigos && ant[out.id]) {
+      if (ant[out.id].valorVenda != null) out.valorVenda = ant[out.id].valorVenda;
+      if (MODALIDADES_.indexOf(ant[out.id].modalidade) >= 0) out.modalidade = ant[out.id].modalidade;
+    }
     return out;
   }).filter((m) => m.descricao && m.quantidade > 0);
 }
@@ -918,7 +927,7 @@ function materiaisSemValores_() {
 }
 
 function resumoMats_(mats) {
-  return (mats || []).map((m) => (m.codigo ? m.codigo + ' ' : '') + m.descricao + ' (' + m.quantidade + (m.unidade ? ' ' + m.unidade : '') + ')').join('; ');
+  return (mats || []).map((m) => (m.codigo ? m.codigo + ' ' : '') + m.descricao + ' (' + m.quantidade + (m.unidade ? ' ' + m.unidade : '') + (m.modalidade ? ' · ' + (m.modalidade === 'aluguel' ? 'Aluguel' : 'Venda') : '') + ')').join('; ');
 }
 
 /* ---------- E-mail "Cliente retirado" ---------- */
