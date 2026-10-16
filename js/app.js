@@ -426,7 +426,7 @@
         // OS que a supervisão resolveu por telefone: o técnico não precisa mais ir
         VG.Store.list('ordens').filter((o) => o.resolucaoRemota && o.tecnicoId === sess.tecnicoId && pendAntes.has(o.id) && VG.isConcluida(o.status))
           .forEach((o) => {
-            VG.toast(`OS #${o.numero} (${(o.cliente && o.cliente.nome) || 'cliente'}) foi resolvida por telefone pela supervisão. Não precisa ir.`, 'info', 9000);
+            VG.toast(`OS #${o.numero} (${(o.cliente && o.cliente.nome) || 'cliente'}) foi resolvida pela supervisão. Não precisa ir.`, 'info', 9000);
             try { navigator.vibrate && navigator.vibrate(150); } catch (e) {}
           });
         // novo pedido incluído pela supervisão numa OS que já estava com o técnico

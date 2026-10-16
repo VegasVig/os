@@ -716,7 +716,7 @@
           </div>
           <div class="page-head__actions">
             ${!final ? `<a class="btn" href="#/os/editar/${os.id}">${VG.icon('edit')}<span>Editar</span></a>` : ''}
-            ${PODE_REMOTO.includes(os.status) ? `<button class="btn" id="d-remoto" title="Resolveu o problema por telefone? Feche a OS sem visita do técnico.">${VG.icon('phone')}<span>Resolver por telefone</span></button>` : ''}
+            ${PODE_REMOTO.includes(os.status) ? `<button class="btn" id="d-remoto" title="Supervisor resolveu o problema? Feche a OS sem visita do técnico.">${VG.icon('phone')}<span>Fechar O.S</span></button>` : ''}
             ${os.status !== 'cancelada' ? `<button class="btn" id="d-links">${VG.icon('link')}<span>Links</span></button>` : ''}
             <button class="btn btn-primary" id="d-pdf">${VG.icon('pdf')}<span>Gerar PDF</span></button>
             ${!semCancelar ? `<button class="btn btn-danger" id="d-cancel">${VG.icon('ban')}<span>Cancelar</span></button>` : ''}
