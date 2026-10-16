@@ -633,32 +633,28 @@ const ACOES = {
   resolverRemoto(req) {
     const s = sessao_(req, PAPEIS_SUP);
     const servico = String(req.servico || '').trim().slice(0, 3000);
-    const contato = String(req.contato || '').trim().slice(0, 120);
-    const telefone = String(req.telefone || '').trim().slice(0, 40);
-    const diagnostico = String(req.diagnostico || '').trim().slice(0, 3000);
-    if (!contato) throw new Error('Informe com quem você falou no cliente.');
     if (!servico) throw new Error('Descreva como o problema foi resolvido.');
     return comLock_(() => {
       const os = osDaSupervisao_(s, req.id);
-      if (PODE_RESOLVER_REMOTO_.indexOf(os.status) < 0) throw new Error('Só é possível resolver por telefone uma OS que ainda não foi finalizada pelo técnico.');
+      if (PODE_RESOLVER_REMOTO_.indexOf(os.status) < 0) throw new Error('Só é possível fechar pela supervisão uma OS que ainda não foi finalizada pelo técnico.');
       const agora = agora_();
       const a = os.atendimento || {};
       a.fotos = a.fotos || { antes: [], depois: [] };
       a.inicio = a.inicio || agora;
       a.fim = agora;
-      a.diagnostico = diagnostico || a.diagnostico || 'Atendimento remoto, por telefone.';
+      a.diagnostico = a.diagnostico || 'Resolvido pela supervisão, sem visita do técnico.';
       a.servico = servico;
       // técnico que já estava no local e lançou material: mantém; senão, sem material
       if (!(a.usouMaterial === true && (a.materiais || []).length)) { a.usouMaterial = false; a.materiais = []; }
       os.atendimento = a;
-      os.resolucaoRemota = { em: agora, por: s.nome, porId: s.userId, contato: contato, telefone: telefone, statusAnterior: os.status };
+      os.resolucaoRemota = { em: agora, por: s.nome, porId: s.userId, statusAnterior: os.status };
       delete os.devolucao;
       os.status = 'concluida';
-      conferencia_(os, 'remota', s, 'Falou com ' + contato + (telefone ? ' (' + telefone + ')' : ''));
-      hist_(os, 'OS resolvida por telefone pela supervisão. Falou com: ' + contato + (telefone ? ' (' + telefone + ')' : '') + '. ' + servico, s.nome);
+      conferencia_(os, 'remota', s, servico);
+      hist_(os, 'OS fechada pela supervisão. ' + servico, s.nome);
       os.atualizadoEm = agora;
       upsert_('ordens', os);
-      registrarAtividade_('OS #' + os.numero + ' resolvida por telefone por ' + String(s.nome || '').split(' ')[0], os.id, 'phone');
+      registrarAtividade_('OS #' + os.numero + ' fechada pela supervisão por ' + String(s.nome || '').split(' ')[0], os.id, 'phone');
       bump_();
       return os;
     });

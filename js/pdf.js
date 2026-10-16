@@ -223,7 +223,7 @@
     if (os.resolucaoRemota) {
       const r = os.resolucaoRemota;
       section('Atendimento remoto');
-      paragraph(`OS resolvida por telefone pela supervisão (${r.por || '-'}) em ${VG.fmtDateTime(r.em)}. Contato no cliente: ${r.contato || '-'}${r.telefone ? ' - ' + r.telefone : ''}. Não houve visita do técnico; por isso a OS não tem assinaturas.`);
+      paragraph(`OS fechada pela supervisão (${r.por || '-'}) em ${VG.fmtDateTime(r.em)}. Não houve visita do técnico; por isso a OS não tem assinaturas.`);
     } else {
     /* Assinaturas */
     section('Assinaturas');
@@ -322,7 +322,7 @@
         ${sec('Materiais utilizados')}<p style="font-size:12px;margin:0 0 6px"><b>Utilizou material: ${esc(VG.Mat.usouTexto(os))}</b></p>${(a.materiais || []).length ? matsPrint(a.materiais) : `<p style="font-size:12px">${VG.Mat.usou(os) === false ? 'Não foi utilizado material.' : 'Nenhum material registrado.'}</p>`}
         ${sec('Observações')}<p style="font-size:12px;white-space:pre-wrap">${esc(a.observacoes || '—')}</p>
         ${fotos.length ? sec('Fotos') + `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map(([l, f]) => `<div><img src="${f}" style="width:170px;height:128px;object-fit:cover;border:1px solid #ccc"><div style="font-size:9px;color:#666">${l}</div></div>`).join('')}</div>` : ''}
-        ${os.resolucaoRemota ? `${sec('Atendimento remoto')}<p style="font-size:12px">OS resolvida por telefone pela supervisão (${esc(os.resolucaoRemota.por || '—')}) em ${VG.fmtDateTime(os.resolucaoRemota.em)}. Contato no cliente: ${esc(os.resolucaoRemota.contato || '—')}${os.resolucaoRemota.telefone ? ' · ' + esc(os.resolucaoRemota.telefone) : ''}. Não houve visita do técnico; por isso a OS não tem assinaturas.</p>`
+        ${os.resolucaoRemota ? `${sec('Atendimento remoto')}<p style="font-size:12px">OS fechada pela supervisão (${esc(os.resolucaoRemota.por || '—')}) em ${VG.fmtDateTime(os.resolucaoRemota.em)}. Não houve visita do técnico; por isso a OS não tem assinaturas.</p>`
           : `${sec('Assinaturas')}<table style="width:100%;border-collapse:collapse"><tr>${sig('Técnico responsável', os.assinaturaTecnico)}${sig('Cliente', os.assinaturaCliente)}</tr></table>`}
         <div style="margin-top:18px;border-top:1px solid #aaa;padding-top:6px;font-size:9px;color:#666;display:flex;justify-content:space-between"><span>${esc(VG.Store.getConfig().empresa.nome)}</span><span>Gerado em ${VG.fmtDateTime(VG.nowISO())}</span></div>
       </div>`;

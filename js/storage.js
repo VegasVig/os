@@ -291,7 +291,7 @@
       try {
         const salva = await call(action, Object.assign({ id }, extra || {}));
         this.put('ordens', salva);
-        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, devolverTecnico: `OS #${salva.numero} reaberta para o técnico`, resolverRemoto: `OS #${salva.numero} resolvida por telefone`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
+        const txt = { processarOS: `OS #${salva.numero} processada`, reabrirOS: `OS #${salva.numero} reaberta`, devolverTecnico: `OS #${salva.numero} reaberta para o técnico`, resolverRemoto: `OS #${salva.numero} fechada pela supervisão`, corrigirMateriais: `Materiais utilizados da OS #${salva.numero} atualizados` }[action];
         if (txt) { mem.atividades.unshift({ id: VG.uid(), dataHora: VG.nowISO(), texto: txt, osId: id, icon: 'check' }); mem.atividades = mem.atividades.slice(0, 150); }
         return salva;
       } catch (e) {
