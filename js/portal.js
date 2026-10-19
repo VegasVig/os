@@ -43,6 +43,7 @@
       <section class="panel"><div class="panel__head"><h3>${VG.icon('user')}Cliente</h3></div>
         <div class="panel__body kv">
           ${VG.kv('Nome / Razão social', c.nome)}
+          ${c.fantasia ? VG.kv('Nome fantasia / contrato', c.fantasia) : ''}
           ${papel === 'cliente' ? VG.kv('CPF/CNPJ', VG.fmtDoc(c.cpf_cnpj)) : ''}
           ${VG.kv('Telefone', c.telefone ? `<a href="tel:${VG.digits(c.telefone)}">${VG.esc(VG.fmtPhone(c.telefone))}</a>` : '', true)}
           ${papel === 'cliente' ? VG.kv('E-mail', c.email) : ''}
@@ -475,5 +476,5 @@
     VG.Theme && VG.Theme.bind(root);
   }
 
-  VG.Portal = { render, renderErro, cleanup };
+  VG.Portal = { render, renderErro, cleanup, clienteHTML, problemaEquipHTML };
 })();

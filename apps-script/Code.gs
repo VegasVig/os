@@ -642,15 +642,23 @@ const ACOES = {
       a.fotos = a.fotos || { antes: [], depois: [] };
       a.inicio = a.inicio || agora;
       a.fim = agora;
-      a.diagnostico = a.diagnostico || 'Resolvido pela supervisão, sem visita do técnico.';
+      const diag = String(req.diagnostico || '').trim().slice(0, 3000);
+      a.diagnostico = diag || a.diagnostico || 'Resolvido pela supervisão, sem visita do técnico.';
       a.servico = servico;
-      // técnico que já estava no local e lançou material: mantém; senão, sem material
-      if (!(a.usouMaterial === true && (a.materiais || []).length)) { a.usouMaterial = false; a.materiais = []; }
+      const obs = String(req.observacoes || '').trim().slice(0, 3000);
+      if (obs) a.observacoes = obs;
+      if (req.usouMaterial === true || req.usouMaterial === false) {
+        const mats = req.usouMaterial ? limparMats_(req.materiais, a.materiais, true) : [];
+        if (req.usouMaterial && !mats.length) throw new Error('Informe os materiais utilizados.');
+        a.usouMaterial = req.usouMaterial;
+        a.materiais = mats;
+      } else if (!(a.usouMaterial === true && (a.materiais || []).length)) { a.usouMaterial = false; a.materiais = []; }
       os.atendimento = a;
       os.resolucaoRemota = { em: agora, por: s.nome, porId: s.userId, statusAnterior: os.status };
       delete os.devolucao;
       os.status = 'concluida';
       conferencia_(os, 'remota', s, servico);
+      hist_(os, a.usouMaterial ? 'Material utilizado: ' + resumoMats_(a.materiais) + '.' : 'Não foi utilizado material.', s.nome);
       hist_(os, 'OS fechada pela supervisão. ' + servico, s.nome);
       os.atualizadoEm = agora;
       upsert_('ordens', os);

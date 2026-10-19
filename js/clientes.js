@@ -17,7 +17,7 @@
     const q = VG.norm(state.q), qd = VG.digits(state.q);
     return S().list('clientes')
       .filter((c) => !state.status || (c.status || 'ativo') === state.status)
-      .filter((c) => !q || VG.norm([c.codigo, c.nome, c.email, c.cidade, c.bairro, c.endereco, c.cpf_cnpj ? '' : 'sem documento'].join(' ')).includes(q) || (qd.length >= 3 && (VG.digits(c.cpf_cnpj).includes(qd) || VG.digits(c.telefone).includes(qd))))
+      .filter((c) => !q || VG.norm([c.codigo, c.codigoErp, c.nome, c.fantasia, c.email, c.cidade, c.bairro, c.endereco, c.cpf_cnpj ? '' : 'sem documento'].join(' ')).includes(q) || (qd.length >= 3 && (VG.digits(c.cpf_cnpj).includes(qd) || VG.digits(c.telefone).includes(qd))))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
@@ -67,7 +67,7 @@
         <tbody>${list.map((c) => `
           <tr data-id="${c.id}">
             <td data-label="Código" class="num">${VG.esc(c.codigo)}</td>
-            <td data-label="Nome"><span class="strong">${VG.esc(c.nome)}</span><span class="sub">${VG.esc([[c.endereco, c.numero].filter(Boolean).join(', '), c.bairro].filter(Boolean).join(' · '))}</span></td>
+            <td data-label="Nome"><span class="strong">${VG.esc(c.nome)}</span>${c.fantasia ? `<span class="sub">${VG.esc(c.fantasia)}</span>` : ''}<span class="sub">${VG.esc([[c.endereco, c.numero].filter(Boolean).join(', '), c.bairro].filter(Boolean).join(' · '))}</span></td>
             <td data-label="CPF/CNPJ">${c.cpf_cnpj ? VG.esc(VG.fmtDoc(c.cpf_cnpj)) : '<span class="badge badge--yellow"><i></i>Sem documento</span>'}</td>
             <td data-label="Telefone">${VG.esc(VG.fmtPhone(c.telefone))}</td>
             <td data-label="E-mail">${VG.esc(c.email || '—')}</td>
@@ -99,7 +99,7 @@
       title: c.nome, size: 'lg',
       body: `
         <div class="kv">
-          ${VG.kv('Código', c.codigo)}${VG.kv('CPF/CNPJ', VG.fmtDoc(c.cpf_cnpj))}
+          ${VG.kv('Código', c.codigo)}${VG.kv('CPF/CNPJ', VG.fmtDoc(c.cpf_cnpj))}${c.fantasia ? VG.kv('Nome fantasia / contrato', c.fantasia) : ''}
           ${VG.kv('Telefone', c.telefone ? `<a href="tel:${VG.digits(c.telefone)}">${VG.esc(VG.fmtPhone(c.telefone))}</a>` : '', true)}
           ${VG.kv('E-mail', c.email ? `<a href="mailto:${VG.esc(c.email)}">${VG.esc(c.email)}</a>` : '', true)}
           <div class="kv__item span-all" style="grid-column:1/-1">${'<div class="kv__k">Endereço</div><div class="kv__v">' + VG.esc(VG.enderecoCompleto(c) || '—') + '</div>'}</div>
@@ -129,9 +129,10 @@
         <form id="cf" class="grid grid-4" novalidate>
           ${f('codigo', 'Código', {})}
           ${f('nome', 'Nome / Razão social', { req: true, cls: 'span-3', attrs: 'autocomplete="organization"' })}
+          ${f('fantasia', 'Nome fantasia / contrato', { cls: 'span-4', attrs: 'placeholder="Ex.: PADARIA CENTRAL (CFTV FULL) - 4408"' })}
           ${f('cpf_cnpj', 'CPF/CNPJ', { value: VG.fmtDoc(c.cpf_cnpj), attrs: 'data-mask="doc" inputmode="numeric"' })}
           ${f('telefone', 'Telefone', { value: VG.fmtPhone(c.telefone), attrs: 'data-mask="phone" inputmode="tel"' })}
-          ${f('email', 'E-mail', { cls: 'span-2', attrs: 'type="email" inputmode="email"' })}
+          ${f('email', 'E-mail', { cls: 'span-2', attrs: 'inputmode="email" placeholder="Mais de um: separe com ;"' })}
           ${f('cep', 'CEP', { value: VG.fmtCEP(c.cep), attrs: 'data-mask="cep" inputmode="numeric" placeholder="Preenche o endereço"' })}
           ${f('endereco', 'Endereço', { cls: 'span-2' })}
           ${f('numero', 'Número')}
@@ -169,13 +170,18 @@
           const doc = VG.digits(fd.cpf_cnpj);
           if (!fd.nome.trim()) { bad('nome'); VG.toast('Informe o nome ou razão social.', 'warn'); return false; }
           if (doc && !VG.validDoc(doc)) { bad('cpf_cnpj'); VG.toast('CPF/CNPJ inválido. Confira os números ou deixe em branco para completar depois.', 'warn', 5000); return false; }
-          // o mesmo CPF/CNPJ pode ter várias unidades; só bloqueia se o endereço também for igual
-          const k = VG.CSV.chave({ cpf_cnpj: doc, nome: fd.nome, endereco: fd.endereco, numero: fd.numero });
-          const dup = S().list('clientes').find((x) => x.id !== id && VG.CSV.chave(x) === k);
-          if (dup) { bad('cpf_cnpj'); VG.toast(`Já existe o cadastro ${dup.nome} (${dup.codigo}) com este ${doc ? 'CPF/CNPJ' : 'nome'} neste endereço.`, 'warn', 5000); return false; }
-          if (fd.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fd.email)) { bad('email'); VG.toast('E-mail inválido.', 'warn'); return false; }
+          // mesmo CPF/CNPJ e endereço é aceito se o nome ou o nome fantasia (contrato) for diferente
+          const outros = S().list('clientes').filter((x) => x.id !== id);
+          const cod = fd.codigo.trim();
+          const dupCod = cod && outros.find((x) => VG.norm(x.codigo) === VG.norm(cod));
+          if (dupCod) { bad('codigo'); VG.toast(`O código ${cod} já é do cliente ${dupCod.nome}.`, 'warn', 5000); return false; }
+          const k = VG.CSV.chave({ cpf_cnpj: doc, nome: fd.nome, fantasia: fd.fantasia, endereco: fd.endereco, numero: fd.numero });
+          const dup = outros.find((x) => VG.CSV.chave(x) === k);
+          if (dup) { bad('fantasia'); VG.toast(`Já existe o cadastro ${dup.nome} (${dup.codigo}) com este ${doc ? 'CPF/CNPJ' : 'nome'}, endereço e nome fantasia. Mude o nome fantasia para diferenciar o contrato.`, 'warn', 6000); return false; }
+          const em = VG.CSV.emails(fd.email);
+          if (em.invalidos) { bad('email'); VG.toast('E-mail inválido. Para mais de um, separe com ponto e vírgula.', 'warn'); return false; }
           const obj = Object.assign({}, id ? c : { criadoEm: VG.nowISO() }, {
-            codigo: fd.codigo.trim() || nextCodigo(), nome: fd.nome.trim(), cpf_cnpj: doc, telefone: VG.digits(fd.telefone), email: fd.email.trim(),
+            codigo: cod || nextCodigo(), nome: fd.nome.trim(), fantasia: fd.fantasia.trim(), cpf_cnpj: doc, telefone: VG.digits(fd.telefone), email: em.valor,
             cep: VG.digits(fd.cep), endereco: fd.endereco.trim(), numero: fd.numero.trim(), complemento: fd.complemento.trim(),
             bairro: fd.bairro.trim(), cidade: fd.cidade.trim(), estado: fd.estado.trim().toUpperCase(), status: fd.status,
           });
@@ -220,7 +226,7 @@
             <input type="file" id="csv-file" accept=".csv,text/csv" class="sr-only">
           </label>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1rem;flex-wrap:wrap">
-            <span class="hint">Aceita vírgula ou ponto e vírgula. O mesmo CPF/CNPJ pode ter várias unidades; só é ignorado quando o endereço também é igual. Sem CPF/CNPJ entra com aviso para completar depois.</span>
+            <span class="hint">Aceita vírgula ou ponto e vírgula. O mesmo CPF/CNPJ pode ter vários cadastros (endereço, nome ou nome fantasia diferentes). É ignorado só quando o código já existe ou quando tudo é igual. Sem CPF/CNPJ entra com aviso para completar depois.</span>
             <button type="button" class="btn btn-sm" id="csv-model">${VG.icon('download')}<span>Baixar modelo CSV</span></button>
           </div>
         </div>
@@ -228,7 +234,7 @@
       actions: [
         { label: 'Cancelar' },
         { label: 'Confirmar importação', cls: 'btn-primary', icon: 'check', onClick: () => {
-          if (!analise || !analise.validos) { VG.toast('Selecione um arquivo com registros válidos.', 'warn'); return false; }
+          if (!analise || !(analise.validos + analise.complementar)) { VG.toast('Selecione um arquivo com registros válidos.', 'warn'); return false; }
           let seq = parseInt(nextCodigo().slice(1), 10);
           const codigos = new Set(S().list('clientes').map((c) => c.codigo));
           const novos = analise.registros.filter((r) => r.situacao === 'ok').map((r) => {
@@ -236,11 +242,12 @@
             let codigo = d.codigo && !codigos.has(d.codigo) ? d.codigo : null;
             if (!codigo) { codigo = 'C' + String(seq++).padStart(4, '0'); }
             codigos.add(codigo);
-            return { ...d, codigo, status: 'ativo', criadoEm: VG.nowISO() };
+            return { ...d, codigo, criadoEm: VG.nowISO() };
           });
-          try { S().saveMany('clientes', novos); } catch (e) { return false; }
-          S().log(`${novos.length} clientes importados via CSV`, null, 'users');
-          VG.toast(`${novos.length} clientes importados com sucesso.`, 'success');
+          const atualizados = analise.registros.filter((r) => r.situacao === 'complementar').map((r) => ({ ...r.existente, fantasia: r.dados.fantasia, ...(r.dados.codigo && r.dados.codigo !== r.existente.codigo ? { codigoErp: r.dados.codigo } : {}) }));
+          try { S().saveMany('clientes', novos.concat(atualizados)); } catch (e) { return false; }
+          S().log(`${novos.length} clientes importados via CSV${atualizados.length ? ` e ${atualizados.length} completados com o nome fantasia` : ''}`, null, 'users');
+          VG.toast(`${novos.length} clientes importados${atualizados.length ? ` e ${atualizados.length} cadastros antigos completados com o nome fantasia` : ''}.`, 'success', 6000);
           done && done();
         } },
       ],
@@ -265,23 +272,26 @@
         step2.innerHTML = `<div class="notice" style="margin-top:1rem">${VG.icon('alert')}<div>${VG.esc(analise.erroGeral)}</div></div>`;
         confirmBtn.disabled = true; analise = null; return;
       }
-      const sit = { ok: '<span class="badge badge--green"><i></i>Pronto</span>', erro: '<span class="badge badge--red"><i></i>Erro</span>', duplicado: '<span class="badge badge--yellow"><i></i>Duplicado</span>' };
+      const sit = { ok: '<span class="badge badge--green"><i></i>Pronto</span>', erro: '<span class="badge badge--red"><i></i>Erro</span>', duplicado: '<span class="badge badge--yellow"><i></i>Já cadastrado</span>', complementar: '<span class="badge badge--blue"><i></i>Completar</span>' };
       step2.innerHTML = `
         <hr class="divider">
         <p style="margin:0 0 .8rem"><strong>${VG.esc(file.name)}</strong></p>
         <div class="csv-summary">
           <div><b>${analise.total}</b><span>${analise.total === 1 ? 'cliente encontrado' : 'clientes encontrados'}</span></div>
           <div><b style="color:var(--st-green)">${analise.validos}</b><span>${analise.validos === 1 ? 'cliente pronto' : 'clientes prontos'} para importação</span></div>
-          <div><b style="color:${analise.problemas ? 'var(--st-red)' : 'inherit'}">${analise.problemas}</b><span>${analise.problemas === 1 ? 'registro possui' : 'registros possuem'} problemas</span></div>
+          <div><b>${analise.complementar}</b><span>já cadastrados que recebem o nome fantasia</span></div>
+          <div><b>${analise.duplicados}</b><span>já cadastrados (ignorados)</span></div>
+          <div><b style="color:${analise.problemas ? 'var(--st-red)' : 'inherit'}">${analise.problemas}</b><span>${analise.problemas === 1 ? 'registro com erro' : 'registros com erro'}</span></div>
         </div>
-        <div class="csv-preview"><table class="table"><thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF/CNPJ</th><th>Telefone</th><th>Cidade</th><th>Observação</th></tr></thead><tbody>
+        <div class="csv-preview"><table class="table"><thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>Fantasia</th><th>CPF/CNPJ</th><th>Telefone</th><th>Cidade</th><th>Observação</th></tr></thead><tbody>
           ${analise.registros.slice(0, 500).map((r) => `<tr class="${r.situacao === 'erro' ? 'row-err' : r.situacao === 'duplicado' ? 'row-dup' : ''}">
-            <td class="num">${r.linha}</td><td>${sit[r.situacao]}</td><td>${VG.esc(r.dados.nome || '—')}</td><td>${VG.esc(VG.fmtDoc(r.dados.cpf_cnpj) || 'sem documento')}</td>
+            <td class="num">${r.linha}</td><td>${sit[r.situacao]}</td><td>${VG.esc(r.dados.nome || '—')}</td><td>${VG.esc(r.dados.fantasia || '—')}</td><td>${VG.esc(VG.fmtDoc(r.dados.cpf_cnpj) || 'sem documento')}</td>
             <td>${VG.esc(VG.fmtPhone(r.dados.telefone) || '—')}</td><td>${VG.esc(r.dados.cidade || '—')}</td><td class="faint">${VG.esc(r.erros.join(', '))}</td></tr>`).join('')}
         </tbody></table></div>
         ${analise.registros.length > 500 ? `<p class="hint">Mostrando as 500 primeiras linhas.</p>` : ''}`;
-      confirmBtn.disabled = !analise.validos;
-      confirmBtn.querySelector('span').textContent = analise.validos ? `Importar ${analise.validos} ${analise.validos === 1 ? 'cliente' : 'clientes'}` : 'Nada para importar';
+      const total = analise.validos + analise.complementar;
+      confirmBtn.disabled = !total;
+      confirmBtn.querySelector('span').textContent = total ? `Importar ${analise.validos} e completar ${analise.complementar}` : 'Nada para importar';
     };
     input.onchange = () => processar(input.files[0]);
     ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));

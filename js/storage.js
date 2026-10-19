@@ -218,7 +218,12 @@
       return agendar(col, obj).then(() => obj);
     },
     saveMany(col, items) {
-      items.forEach((obj) => { if (!obj.id) obj.id = VG.uid(); obj.atualizadoEm = VG.nowISO(); mem[col].push(obj); });
+      const pos = new Map((mem[col] || (mem[col] = [])).map((x, i) => [x.id, i]));
+      items.forEach((obj) => {
+        if (!obj.id) obj.id = VG.uid();
+        obj.atualizadoEm = VG.nowISO();
+        if (pos.has(obj.id)) mem[col][pos.get(obj.id)] = obj; else mem[col].push(obj);
+      });
       pendentes++; atualizarIndicador();
       return call('saveMany', { col, items })
         .catch((e) => { VG.toast('Não foi possível salvar no servidor: ' + e.message, 'error', 7000); throw e; })

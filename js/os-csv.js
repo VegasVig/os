@@ -62,7 +62,7 @@
 
   function acharCliente(d, clientes) {
     if (d.codigo_cliente) {
-      const c = clientes.find((x) => x.codigo && chaveTexto(x.codigo) === chaveTexto(d.codigo_cliente));
+      const c = clientes.find((x) => [x.codigo, x.codigoErp].some((k) => k && chaveTexto(k) === chaveTexto(d.codigo_cliente)));
       if (c) return { c };
       if (!d.cpf_cnpj && !d.cliente) return { erro: `Código de cliente "${d.codigo_cliente}" não cadastrado` };
     }

@@ -54,6 +54,7 @@
     [/^\/os\/nova$/, 'Nova OS', 'os.criar', (el, m, p) => VG.OS.renderForm(el, null, p), 'nova'],
     [/^\/os\/editar\/([\w-]+)$/, 'Editar OS', 'os.editar', (el, m) => VG.OS.renderForm(el, m[1]), 'os'],
     [/^\/os\/ver\/([\w-]+)$/, 'Detalhe da OS', 'os.todas', (el, m) => VG.OS.renderDetail(el, m[1]), 'os'],
+    [/^\/os\/fechar\/([\w-]+)$/, 'Fechar O.S', 'os.editar', (el, m) => VG.OS.renderFechar(el, m[1]), 'os'],
     [/^\/clientes$/, 'Clientes', 'clientes', (el) => VG.Clientes.render(el), 'clientes'],
     [/^\/tecnicos$/, 'Técnicos', 'tecnicos', (el) => VG.Tecnicos.render(el), 'tecnicos'],
     [/^\/materiais$/, 'Materiais e valores', 'materiais', (el) => VG.Materiais.render(el), 'materiais'],

@@ -132,6 +132,7 @@
       ['Nome / Razão social', c.nome], ['CPF / CNPJ', VG.fmtDoc(c.cpf_cnpj)],
       ['Telefone', VG.fmtPhone(c.telefone)], ['E-mail', c.email],
     ]);
+    if (c.fantasia) grid([['Nome fantasia / contrato', c.fantasia, true]], 1);
     grid([['Endereço', VG.enderecoCompleto(c), true]], 1);
 
     section('Atendimento');

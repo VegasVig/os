@@ -7,20 +7,22 @@
   'use strict';
   const VG = window.VG;
 
-  const COLUNAS = ['codigo', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep'];
+  const COLUNAS = ['codigo', 'nome', 'fantasia', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep', 'status'];
   const ALIASES = {
-    codigo: ['codigo', 'cod', 'id', 'codigo_cliente'],
-    nome: ['nome', 'razao_social', 'nome_razao_social', 'cliente', 'nome_fantasia'],
-    cpf_cnpj: ['cpf_cnpj', 'cpf', 'cnpj', 'documento', 'cpf/cnpj', 'doc'],
-    telefone: ['telefone', 'fone', 'celular', 'whatsapp', 'tel'],
+    codigo: ['codigo', 'cod', 'id', 'codigo_cliente', 'codcliente', 'cod_cliente'],
+    nome: ['nome', 'razao_social', 'nome_razao_social', 'cliente'],
+    fantasia: ['fantasia', 'nome_fantasia', 'unidade', 'contrato'],
+    cpf_cnpj: ['cpf_cnpj', 'cpf', 'cnpj', 'documento', 'cpf/cnpj', 'doc', 'cgccpf', 'cgc_cpf'],
+    telefone: ['telefone', 'celularos', 'celular', 'fone', 'fone1', 'whatsapp', 'tel'],
     email: ['email', 'e_mail', 'e-mail'],
     endereco: ['endereco', 'logradouro', 'rua'],
-    numero: ['numero', 'num', 'nro', 'n'],
+    numero: ['numero', 'num', 'nro', 'n', 'numcasa'],
     complemento: ['complemento', 'compl'],
     bairro: ['bairro'],
     cidade: ['cidade', 'municipio'],
     estado: ['estado', 'uf'],
     cep: ['cep'],
+    status: ['status', 'situacao'],
   };
 
   function detectDelimiter(firstLine) {
@@ -53,18 +55,32 @@
 
   const normHeader = (h) => VG.norm(h).replace(/\s+/g, '_');
 
+  const limpa = (v) => VG.norm(v).replace(/[^a-z0-9]/g, '');
+  const docOk = (c) => { const d = VG.digits(c.cpf_cnpj); return d && !/^(\d)\1+$/.test(d) ? d : ''; };
+
   /**
-   * Chave de duplicidade: o mesmo CPF/CNPJ pode ter várias unidades (endereços).
-   * Só é duplicado quando o documento E o endereço são iguais.
-   * Sem documento: compara nome + endereço.
+   * Chave da unidade: documento + endereço + nome + nome fantasia.
+   * O mesmo CNPJ no mesmo endereço é aceito quando o nome ou o nome fantasia (contrato) muda.
    */
   function chave(c) {
-    const end = VG.norm([c.endereco, c.numero].join(' ')).replace(/[^a-z0-9]/g, '');
-    const doc = VG.digits(c.cpf_cnpj);
-    return doc && !/^(\d)\1+$/.test(doc) ? doc + '|' + end : 'sem|' + VG.norm(c.nome).replace(/[^a-z0-9]/g, '') + '|' + end;
+    return [docOk(c) || 'sem', limpa([c.endereco, c.numero].join(' ')), limpa(c.nome), limpa(c.fantasia)].join('|');
+  }
+  const chaveBase = (c) => chave(Object.assign({}, c, { fantasia: '' }));
+
+  /** Aceita vários e-mails (separados por ; , ou espaço); devolve os válidos e quantos foram descartados */
+  function emails(txt) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const partes = String(txt || '').split(/[;,\s]+/).filter(Boolean);
+    const ok = [...new Set(partes.filter((e) => re.test(e)).map((e) => e.toLowerCase()))];
+    return { valor: ok.join('; '), invalidos: partes.filter((e) => !re.test(e)).length };
   }
 
-  /** Converte o texto em registros validados */
+  /**
+   * Converte o texto em registros validados.
+   * Duplicado = código já cadastrado; sem código, mesma chave da unidade.
+   * Cadastro antigo sem nome fantasia que bate com a linha (código ou documento+endereço+nome)
+   * é considerado o mesmo cliente e recebe o nome fantasia e o código do arquivo em codigoErp ("complementar").
+   */
   function analisar(text, clientesExistentes) {
     const rows = parse(text);
     if (!rows.length) return { erroGeral: 'O arquivo está vazio.' };
@@ -77,35 +93,69 @@
     if (map.nome == null) return { erroGeral: 'Não encontramos a coluna "nome" no cabeçalho. Baixe o modelo CSV e use os mesmos nomes de coluna.' };
     if (map.cpf_cnpj == null) return { erroGeral: 'Não encontramos a coluna "cpf_cnpj" no cabeçalho. Baixe o modelo CSV e use os mesmos nomes de coluna.' };
 
-    const chaves = new Set(clientesExistentes.map(chave));
-    const registros = rows.slice(1).map((r, i) => {
+    const linhas = rows.slice(1).map((r) => {
       const d = {};
       COLUNAS.forEach((col) => { d[col] = map[col] != null ? String(r[map[col]] ?? '').trim() : ''; });
+      return d;
+    });
+    const codArquivo = new Set(linhas.map((d) => limpa(d.codigo)).filter(Boolean));
+    const porCodigo = {};
+    const chaves = new Set();
+    const noArquivo = new Set();
+    const antigos = {};
+    clientesExistentes.forEach((c) => {
+      const cod = limpa(c.codigo);
+      if (cod) porCodigo[cod] = c;
+      if (limpa(c.codigoErp)) porCodigo[limpa(c.codigoErp)] = c;
+      chaves.add(chave(c));
+      // cadastro antigo sem fantasia: só casa pelo documento+endereço+nome se o código dele não estiver no arquivo
+      if (!limpa(c.fantasia) && !(cod && codArquivo.has(cod))) (antigos[chaveBase(c)] = antigos[chaveBase(c)] || []).push(c);
+    });
+
+    const registros = linhas.map((d, i) => {
       const erros = [];
       const avisos = [];
       let doc = VG.digits(d.cpf_cnpj);
-      if (doc && /^(\d)\1+$/.test(doc)) doc = ''; // 000.000.000-00 e similares = sem documento
+      if (doc && /^(\d)\1+$/.test(doc)) doc = '';
       let situacao = 'ok';
+      let existente = null;
       if (!d.nome) erros.push('Nome em branco');
       if (!doc) avisos.push('Sem CPF/CNPJ — completar depois');
       else if (!VG.validDoc(doc)) erros.push('CPF/CNPJ inválido');
-      if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) erros.push('E-mail inválido');
+      const em = emails(d.email);
+      d.email = em.valor;
+      if (em.invalidos) avisos.push(em.invalidos === 1 ? 'E-mail inválido ignorado' : `${em.invalidos} e-mails inválidos ignorados`);
       if (d.estado && d.estado.length > 2) d.estado = d.estado.slice(0, 2);
+      if (limpa(d.fantasia) === limpa(d.nome)) d.fantasia = '';
       d.cpf_cnpj = doc;
       d.telefone = VG.digits(d.telefone);
       d.cep = VG.digits(d.cep);
       d.estado = (d.estado || '').toUpperCase();
+      d.status = /inativ/.test(VG.norm(d.status)) ? 'inativo' : 'ativo';
+      const cod = limpa(d.codigo);
       const k = chave(d);
+      const base = (antigos[chaveBase(d)] || []);
       if (erros.length) situacao = 'erro';
-      else if (chaves.has(k)) { situacao = 'duplicado'; erros.push(doc ? 'Já cadastrado neste endereço' : 'Mesmo nome e endereço já cadastrado'); }
-      if (situacao !== 'erro') chaves.add(k);
-      return { linha: i + 2, dados: d, erros: erros.concat(situacao === 'ok' ? avisos : []), situacao };
+      else if (cod && porCodigo[cod]) {
+        existente = porCodigo[cod];
+        if (d.fantasia && existente.id && !limpa(existente.fantasia)) situacao = 'complementar';
+        else { situacao = 'duplicado'; erros.push(`Código ${d.codigo} já cadastrado`); }
+      } else if (base.length) {
+        existente = base.shift();
+        if (d.fantasia) situacao = 'complementar';
+        else { situacao = 'duplicado'; erros.push(`Já cadastrado (${existente.codigo || 'sem código'})`); }
+      } else if (!cod && (chaves.has(k) || noArquivo.has(k))) { situacao = 'duplicado'; erros.push(chaves.has(k) ? 'Mesmo documento, nome, fantasia e endereço já cadastrado' : 'Repetido no arquivo'); }
+      if (situacao === 'complementar') avisos.unshift(`Já cadastrado (${existente.codigo || 'sem código'}): recebe o nome fantasia`);
+      if (situacao === 'ok') { noArquivo.add(k); if (cod) porCodigo[cod] = d; }
+      return { linha: i + 2, dados: d, existente, erros: erros.concat(situacao === 'ok' || situacao === 'complementar' ? avisos : []), situacao };
     });
     return {
       registros,
       total: registros.length,
       validos: registros.filter((r) => r.situacao === 'ok').length,
-      problemas: registros.filter((r) => r.situacao !== 'ok').length,
+      complementar: registros.filter((r) => r.situacao === 'complementar').length,
+      problemas: registros.filter((r) => r.situacao === 'erro').length,
+      duplicados: registros.filter((r) => r.situacao === 'duplicado').length,
     };
   }
 
@@ -130,8 +180,8 @@
   function baixarModelo() {
     const linhas = [
       COLUNAS.join(','),
-      'C0100,Condomínio Exemplo,11222333000181,2130001000,contato@exemplo.com.br,Rua Exemplo,100,Bloco A,Centro,Rio de Janeiro,RJ,20000000',
-      'C0101,Maria da Silva,11144477735,21999990000,maria@email.com,"Av. Principal, trecho 2",45,Apto 301,Botafogo,Rio de Janeiro,RJ,22250040',
+      'C0100,Condomínio Exemplo,Portaria Bloco A (CFTV),11222333000181,2130001000,contato@exemplo.com.br,Rua Exemplo,100,Bloco A,Centro,Rio de Janeiro,RJ,20000000,ativo',
+      'C0101,Maria da Silva,,11144477735,21999990000,maria@email.com,"Av. Principal, trecho 2",45,Apto 301,Botafogo,Rio de Janeiro,RJ,22250040,ativo',
     ];
     VG.download('modelo_clientes_vegas.csv', '\uFEFF' + linhas.join('\r\n'), 'text/csv;charset=utf-8');
   }
@@ -142,5 +192,5 @@
     return '\uFEFF' + [colunas.map((c) => esc(c.label)).join(';'), ...linhas.map((l) => colunas.map((c) => esc(c.get(l))).join(';'))].join('\r\n');
   }
 
-  VG.CSV = { COLUNAS, parse, analisar, lerArquivo, baixarModelo, gerar, chave };
+  VG.CSV = { COLUNAS, parse, analisar, lerArquivo, baixarModelo, gerar, chave, emails };
 })();
