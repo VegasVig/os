@@ -31,12 +31,12 @@ const CFG = {
   QR_PIN_TENTATIVAS: 5,     // QR do cliente: erros de PIN antes do bloqueio
   QR_PIN_BLOQUEIO_SEG: 900, // bloqueio de 15 min daquele QR após errar o PIN
   QR_ACESSOS_MAX: 30,       // consultas guardadas no cadastro do cliente
+  QR_HISTORICO_OS: 5,       // OS anteriores mostradas na leitura do QR
 };
 
 /** Campos do QR do cliente: só mudam pelas ações qrClienteGerenciar / qrCliente */
 const CAMPOS_QR_ = ['qrToken', 'qrGeradoEm', 'qrGeradoPor', 'qrAcessos'];
-/** Tipos de OS que não contam como "última manutenção" no QR */
-const TIPOS_FORA_QR_ = ['venda', 'retirada'];
+
 
 const TABELAS = {
   users:      { aba: 'Usuarios',   campos: ['usuario', 'nome', 'papel', 'ativo', 'ultimoAcesso'] },
@@ -655,7 +655,7 @@ const ACOES = {
       cliente: Object.assign(basico, { endereco: enderecoTxt_(c) }),
       localCentral: c.localCentral || '',
       acesso: { plataforma: a.plataforma || '', usuario: a.usuario || '', senha: a.senha || '', obs: a.obs || '' },
-      ultima: ultimaManutencao_(c.id),
+      ultimas: historicoOS_(c.id, CFG.QR_HISTORICO_OS),
       consultadoPor: por,
     };
   },
@@ -1238,21 +1238,28 @@ function enderecoTxt_(c) {
   return [[c.endereco, c.numero].filter(Boolean).join(', '), c.complemento, c.bairro, [c.cidade, c.estado].filter(Boolean).join(' - ')].filter(Boolean).join(' · ');
 }
 
-/** Última OS atendida em campo para o cliente (sem venda, retirada ou resolução por telefone) */
-function ultimaManutencao_(clienteId) {
-  const fim = (o) => (o.atendimento && o.atendimento.fim) || o.processadaEm || o.atualizadoEm || '';
-  const os = ler_('ordens')
-    .filter((o) => o.clienteId === clienteId && CONCLUIDAS_.indexOf(o.status) >= 0 && !o.resolucaoRemota && TIPOS_FORA_QR_.indexOf(norm_(o.tipo)) < 0)
-    .sort((a, b) => String(fim(b)).localeCompare(String(fim(a))))[0];
-  if (!os) return null;
-  const at = os.atendimento || {};
-  return {
-    numero: os.numero, tipo: os.tipo || '', data: fim(os), tecnico: os.tecnicoNome || '',
-    problema: String(os.problema || '').slice(0, 600),
-    diagnostico: String(at.diagnostico || '').slice(0, 600),
-    servico: String(at.servico || '').slice(0, 1000),
-    equipamentoLocal: (os.equipamento && os.equipamento.local) || '',
-  };
+/** Últimas OS concluídas do cliente (qualquer tipo), da mais recente para a mais antiga. Sem valores. */
+function historicoOS_(clienteId, n) {
+  const fim = (o) => (o.atendimento && o.atendimento.fim) || (o.resolucaoRemota && o.resolucaoRemota.em) || o.processadaEm || o.atualizadoEm || '';
+  return ler_('ordens')
+    .filter((o) => o.clienteId === clienteId && CONCLUIDAS_.indexOf(o.status) >= 0)
+    .sort((a, b) => String(fim(b)).localeCompare(String(fim(a))))
+    .slice(0, n)
+    .map((os) => {
+      const at = os.atendimento || {};
+      return {
+        numero: os.numero, tipo: os.tipo || '', data: fim(os),
+        tecnico: os.resolucaoRemota ? '' : os.tecnicoNome || '',
+        remota: !!os.resolucaoRemota,
+        problema: String(os.problema || '').slice(0, 600),
+        diagnostico: String(at.diagnostico || '').slice(0, 600),
+        servico: String(at.servico || '').slice(0, 1000),
+        observacoes: String(at.observacoes || '').slice(0, 600),
+        equipamentoLocal: (os.equipamento && os.equipamento.local) || '',
+        materiais: (Array.isArray(at.materiais) ? at.materiais : []).filter(Boolean).slice(0, 30)
+          .map((m) => `${m.quantidade || ''} ${m.unidade || ''} ${m.descricao || ''}`.replace(/\s+/g, ' ').trim()),
+      };
+    });
 }
 
 function osDaSupervisao_(s, id) {

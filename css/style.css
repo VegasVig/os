@@ -1177,3 +1177,14 @@ html.is-saving::after {
 .lb-alerta__info p { margin: .3rem 0 0; font-size: .9rem; white-space: pre-wrap; }
 .lb-alerta__acoes { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .lb-adiar { width: auto; min-width: 140px; height: 34px; font-size: .8rem; }
+.qrp__lista { display: grid; gap: .6rem; }
+.qrp__os { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.qrp__os summary { display: flex; align-items: center; gap: .75rem; padding: .75rem .9rem; cursor: pointer; list-style: none; }
+.qrp__os summary::-webkit-details-marker { display: none; }
+.qrp__os summary .icon { margin-left: auto; width: 18px; height: 18px; color: var(--text-2); transform: rotate(90deg); transition: transform .2s; }
+.qrp__os[open] summary .icon { transform: rotate(-90deg); }
+.qrp__os[open] summary { border-bottom: 1px solid var(--line); }
+.qrp__os-n { font-family: var(--font-display); font-weight: 600; font-size: .95rem; min-width: 3.6rem; }
+.qrp__os-t { display: grid; min-width: 0; }
+.qrp__os-t small { color: var(--text-2); font-size: .78rem; }
+.qrp__os-body { padding: .1rem .9rem .9rem; }

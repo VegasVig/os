@@ -205,7 +205,23 @@
   }
 
   function telaDados(root, token, r) {
-    const c = r.cliente || {}, a = r.acesso || {}, u = r.ultima;
+    const c = r.cliente || {}, a = r.acesso || {};
+    const ultimas = r.ultimas || (r.ultima ? [r.ultima] : []);
+    const bloco = (k, v) => (v ? `<div class="qrp__bloco"><span class="kv__k">${k}</span><p>${VG.esc(v)}</p></div>` : '');
+    const osHTML = (u, i) => `
+      <details class="qrp__os" ${i === 0 ? 'open' : ''}>
+        <summary>
+          <span class="qrp__os-n">#${VG.esc(u.numero)}</span>
+          <span class="qrp__os-t"><b>${VG.esc(u.tipo || 'OS')}</b><small>${VG.esc(VG.fmtDateTime(u.data))} · ${u.remota ? 'resolvida por telefone' : VG.esc(u.tecnico || 'sem técnico')}</small></span>
+          ${VG.icon('chevron')}
+        </summary>
+        <div class="qrp__os-body">
+          ${u.equipamentoLocal ? bloco('Local do equipamento', u.equipamentoLocal) : ''}
+          ${bloco('Problema', u.problema)}${bloco('Diagnóstico', u.diagnostico)}${bloco('Serviço executado', u.servico)}
+          ${u.materiais && u.materiais.length ? bloco('Materiais utilizados', u.materiais.join('\n')) : ''}
+          ${bloco('Observações', u.observacoes)}
+        </div>
+      </details>`;
     const temAcesso = a.usuario || a.senha || a.plataforma;
     const copiar = (k, v) => v ? `<button class="btn btn-ghost btn-icon" data-copy="${k}" title="Copiar" aria-label="Copiar">${VG.icon('copy')}</button>` : '';
     casca(root, `
@@ -230,13 +246,9 @@
             ${a.obs ? `<div class="qrp__row"><span class="kv__k">Observações</span><span class="kv__v">${VG.esc(a.obs)}</span></div>` : ''}
           </div>` : '<p class="qrp__texto">Não cadastrado. Avise a supervisão.</p>'}</div></section>
 
-      <section class="panel"><div class="panel__head"><h3>${VG.icon('wrench')}Última manutenção</h3></div>
-        <div class="panel__body">${u ? `
-          <div class="kv kv--3">${VG.kv('OS', '#' + u.numero)}${VG.kv('Data', VG.fmtDateTime(u.data))}${VG.kv('Técnico', u.tecnico)}${VG.kv('Tipo', u.tipo)}${u.equipamentoLocal ? VG.kv('Local do equipamento', u.equipamentoLocal) : ''}</div>
-          ${u.problema ? `<div class="qrp__bloco"><span class="kv__k">Problema</span><p>${VG.esc(u.problema)}</p></div>` : ''}
-          ${u.diagnostico ? `<div class="qrp__bloco"><span class="kv__k">Diagnóstico</span><p>${VG.esc(u.diagnostico)}</p></div>` : ''}
-          ${u.servico ? `<div class="qrp__bloco"><span class="kv__k">Serviço executado</span><p>${VG.esc(u.servico)}</p></div>` : ''}`
-          : '<p class="qrp__texto">Nenhuma manutenção concluída no sistema para este cliente.</p>'}</div></section>
+      <section class="panel"><div class="panel__head"><h3>${VG.icon('wrench')}${ultimas.length > 1 ? `Últimas ${ultimas.length} OS` : 'Última OS'}</h3></div>
+        <div class="panel__body qrp__lista">${ultimas.length ? ultimas.map(osHTML).join('')
+          : '<p class="qrp__texto">Nenhuma OS concluída no sistema para este cliente.</p>'}</div></section>
 
       <p class="hint" style="text-align:center;margin:0">Consulta registrada como: ${VG.esc(r.consultadoPor || '')}. Esta tela se fecha sozinha em 5 minutos.</p>`);
 

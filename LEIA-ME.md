@@ -36,13 +36,13 @@ O sistema começa vazio, só com o usuário `supervisora`.
   - **Limite:** o alerta depende do sistema estar aberto (navegador ou app instalado). Com tudo fechado, ele aparece assim que alguém da supervisão entrar.
   - **Ativação:** cole o `Code.gs` novo e publique uma nova versão. A aba **Lembretes** é criada sozinha na planilha.
 - **QR Code do cliente:** em **Clientes**, o botão **QR** (na lista ou no detalhe do cliente) gera a etiqueta do cliente para colar na central.
-  - Quem lê o QR com a câmera do celular vê o **local da central**, o **acesso remoto** (plataforma/app, usuário, senha e observações) e a **última manutenção** (OS, data, técnico, problema, diagnóstico e serviço).
+  - Quem lê o QR com a câmera do celular vê o **local da central**, o **acesso remoto** (plataforma/app, usuário, senha e observações) e as **últimas 5 OS concluídas** do cliente (número, tipo, data, técnico, problema, diagnóstico, serviço, materiais utilizados sem valores e observações). A mais recente vem aberta; toque nas outras para ver. OS resolvida por telefone aparece marcada.
   - **O QR não guarda nenhum dado do cliente**, só um código. Para ver os dados é preciso digitar o **PIN da equipe técnica** (6 números). A supervisora logada no mesmo celular vê sem PIN.
   - **5 PINs errados** bloqueiam aquele QR por 15 minutos. A tela de dados se fecha sozinha em 5 minutos.
   - **Toda consulta fica registrada:** aparece em **Últimas consultas** (no QR do cliente), no detalhe do cliente e na atividade recente.
   - **Gerar novo:** cria outro QR e a etiqueta antiga para de funcionar na hora (etiqueta perdida, técnico desligado). **Desativar:** o QR para de funcionar até gerar outro.
   - **Imprimir etiqueta** (80 mm, com logo, nome e código do cliente) ou **Baixar PNG**.
-  - **Última manutenção:** a OS mais recente já finalizada pelo técnico (Realizada, Processada ou Reaberta). Não entram Venda, Retirada e OS resolvida por telefone.
+  - **Últimas OS:** entram as OS Realizadas, Processadas ou Reabertas, de qualquer tipo. A quantidade é `QR_HISTORICO_OS` no topo do `Code.gs` (padrão 5).
 - **Ícone do sistema (Controle de OS):** aba do navegador, app instalado no celular e atalho do iPhone usam a arte "Controle de OS" (pasta `assets/icons`). **Quem já tem o app instalado precisa remover e instalar de novo** para ver o ícone novo; o celular guarda o ícone da instalação.
 - **Ícone Vegas QRCode:** a tela aberta pelo QR mostra o ícone (pasta `assets/qr`) e usa esse ícone na aba do navegador. O resto do sistema continua com os ícones de `assets/icons`. Para trocar o ícone do QR, substitua os arquivos de `assets/qr` mantendo os mesmos nomes (`icone.webp`, `icone-32.png`, `icone-180.png`).
 - **Cadastro do cliente:** novos campos **Local da central**, **Plataforma / app**, **Usuário**, **Senha** e **Observações do acesso**.
