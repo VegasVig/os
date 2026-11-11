@@ -26,7 +26,7 @@ const CFG = {
   MAX_TENTATIVAS: 5,
   BLOQUEIO_SEG: 60,
   MAX_ATIVIDADES: 300,
-  VERSAO_BANCO: '4',        // 4 = cria a aba Materiais (cadastro de materiais e valores)
+  VERSAO_BANCO: '5',        // 5 = cria a aba Lembretes (lembretes de abrir OS por cliente)
   MAX_MATERIAIS: 5000,      // limite de itens por importação CSV de materiais
   QR_PIN_TENTATIVAS: 5,     // QR do cliente: erros de PIN antes do bloqueio
   QR_PIN_BLOQUEIO_SEG: 900, // bloqueio de 15 min daquele QR após errar o PIN
@@ -45,6 +45,7 @@ const TABELAS = {
   ordens:     { aba: 'Ordens',     campos: ['numero', 'status', 'prioridade', 'tipo', 'cliente.nome', 'tecnicoNome', 'criadaEm', 'prazoData'] },
   atividades: { aba: 'Atividades', campos: ['dataHora', 'texto', 'osId'] },
   materiais:  { aba: 'Materiais',  campos: ['codigo', 'descricao', 'marca', 'unidade', 'valor', 'valorVenda', 'ativo'] },
+  lembretes:  { aba: 'Lembretes',  campos: ['dataHora', 'clienteNome', 'status', 'repetir', 'criadoPor'] },
   config:     { aba: 'Config',     campos: [] },
 };
 const PAPEIS_SUP = ['supervisora'];
@@ -279,6 +280,7 @@ const ACOES = {
         if (dup) throw new Error('Este usuário já está em uso.');
       }
       if (col === 'clientes') obj = protegerCliente_(ler_('clientes').find((x) => x.id === obj.id), obj);
+      if (col === 'lembretes') obj = prepararLembrete_(s, obj);
       if (col === 'materiais') {
         obj = limparMaterialCad_(obj);
         if (!obj.codigo) throw new Error('Informe o código do material.');
@@ -324,9 +326,15 @@ const ACOES = {
   },
 
   remove(req) {
-    sessao_(req, PAPEIS_SUP);
+    const s = sessao_(req, PAPEIS_SUP);
     const col = colValida_(req.col);
-    return comLock_(() => { remover_(col, String(req.id)); bump_(); return true; });
+    return comLock_(() => {
+      if (col === 'lembretes') {
+        const l = ler_('lembretes').find((x) => x.id === String(req.id));
+        if (l && !podeVerLembrete_(s, l)) throw new Error('Este lembrete é de outra supervisora.');
+      }
+      remover_(col, String(req.id)); bump_(); return true;
+    });
   },
 
   /** Cadastro em lote de técnicos com usuário e senha (lista CSV) */
@@ -521,6 +529,7 @@ const ACOES = {
       const cfgAtual = config_();
       substituirTudo_('users', users);
       ['tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
+      if (Array.isArray(d.lembretes)) substituirTudo_('lembretes', d.lembretes); // backup antigo não tem: mantém os atuais
       substituirTudo_('clientes', (Array.isArray(d.clientes) ? d.clientes : []).map((c) => protegerCliente_(clientesAtuais[c.id], c, true)));
       // backups antigos não têm a lista de materiais: nesse caso ela é mantida
       if (Array.isArray(d.materiais)) substituirTudo_('materiais', d.materiais);
@@ -1285,6 +1294,7 @@ function snapshot_(s) {
     out.clientes = ler_('clientes').map(clienteParaSup_);
     out.tecnicos = ler_('tecnicos');
     out.materiais = ler_('materiais');
+    out.lembretes = ler_('lembretes').filter((l) => podeVerLembrete_(s, l));
     out.ordens = ler_('ordens').filter((o) => podeVerOS_(s, o));
     const minhas = {};
     out.ordens.forEach((o) => (minhas[o.id] = 1));
@@ -1376,6 +1386,38 @@ function mesclarSenha_(u) {
 /** Usuário que vê todas as OS: o "supervisora" geral (ou quem tiver verTodas marcado) */
 function verTodas_(u) {
   return !!u && (u.verTodas === true || (u.verTodas === undefined && norm_(u.usuario) === 'supervisora'));
+}
+
+/* =========================================================================
+   LEMBRETES (agendar a abertura de OS para um cliente)
+   ========================================================================= */
+const LEMB_STATUS_ = ['pendente', 'concluido', 'cancelado'];
+const LEMB_REPETIR_ = ['nao', 'mensal', 'trimestral', 'semestral', 'anual'];
+
+/** Dona do lembrete, supervisão que vê todas, ou lembrete marcado para toda a supervisão */
+function podeVerLembrete_(s, l) {
+  if (s.papel !== 'supervisora') return false;
+  if (l.para === 'todas' || !l.criadoPorId || l.criadoPorId === s.userId) return true;
+  return verTodas_(ler_('users').find((x) => x.id === s.userId));
+}
+
+function prepararLembrete_(s, obj) {
+  const atual = ler_('lembretes').find((x) => x.id === obj.id);
+  if (atual && !podeVerLembrete_(s, atual)) throw new Error('Este lembrete é de outra supervisora.');
+  const c = ler_('clientes').find((x) => x.id === obj.clienteId);
+  if (!c) throw new Error('Cliente do lembrete não encontrado.');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(obj.dataHora || ''))) throw new Error('Data e hora do lembrete inválidas.');
+  const l = Object.assign({}, obj, {
+    clienteNome: c.fantasia || c.nome, clienteCodigo: c.codigo || '',
+    motivo: String(obj.motivo || '').trim().slice(0, 500),
+    status: LEMB_STATUS_.indexOf(obj.status) >= 0 ? obj.status : 'pendente',
+    repetir: LEMB_REPETIR_.indexOf(obj.repetir) >= 0 ? obj.repetir : 'nao',
+    para: obj.para === 'todas' ? 'todas' : 'eu',
+    historico: (Array.isArray(obj.historico) ? obj.historico : []).slice(-30),
+  });
+  if (atual) ['criadoPor', 'criadoPorId', 'criadoEm'].forEach((k) => (l[k] = atual[k]));
+  else { l.criadoPor = s.nome; l.criadoPorId = s.userId; l.criadoEm = agora_(); }
+  return l;
 }
 
 function podeVerOS_(s, os) {

@@ -19,12 +19,12 @@
     validadeLinkDias: 0,
     logoDataUrl: '',
   };
-  const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'materiais'];
+  const COLS = ['users', 'clientes', 'tecnicos', 'ordens', 'atividades', 'materiais', 'lembretes'];
   /** Campos da conferência da supervisão: sempre valem os do servidor */
   const CONFERENCIA = ['processadaEm', 'processadaPor', 'processadaPorId', 'reabertaEm', 'reabertaPor', 'reabertaMotivo', 'conferencias',
     'devolucao', 'devolucoes', 'assinaturasAnteriores', 'resolucaoRemota'];
 
-  let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: {}, rev: 0 };
+  let mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], lembretes: [], config: {}, rev: 0 };
   let publico = null;
   let semLista = false; // { numero, t } quando a tela foi aberta por link exclusivo
   const memLocal = {};
@@ -177,10 +177,11 @@
       mem = {
         users: snap.users || [], clientes: snap.clientes || [], tecnicos: snap.tecnicos || [],
         ordens: snap.ordens || [], atividades: snap.atividades || [], materiais: snap.materiais || [],
+        lembretes: snap.lembretes || [],
         config: snap.config || {}, rev: snap.rev || 0,
       };
     },
-    clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], config: mem.config || {}, rev: 0 }; },
+    clear() { mem = { users: [], clientes: [], tecnicos: [], ordens: [], atividades: [], materiais: [], lembretes: [], config: mem.config || {}, rev: 0 }; },
     rev() { return mem.rev; },
     semListaMateriais: () => semLista,
     setRev(r) { mem.rev = r; },

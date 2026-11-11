@@ -1162,3 +1162,18 @@ html.is-saving::after {
 .qrp__icone { display: block; width: 132px; height: 132px; margin: 0 auto .4rem; border-radius: 22%; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .qrp__topo { position: relative; padding-right: 5.2rem; }
 .qrp__icone--mini { position: absolute; top: 1rem; right: 1.1rem; width: 64px; height: 64px; margin: 0; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+
+/* ---------- LEMBRETES ---------- */
+.count--alerta { background: var(--st-red) !important; color: #fff !important; }
+.topbar__bell { position: relative; }
+.topbar__bell-n { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--st-red); color: #fff; font-size: .66rem; font-weight: 700; line-height: 17px; text-align: center; }
+.lb-btn { position: relative; }
+.lb-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--st-yellow); }
+.lb-alertas { display: grid; gap: .75rem; }
+.lb-alerta { display: grid; gap: .7rem; padding: .9rem 1rem; border: 1px solid color-mix(in srgb, var(--st-red) 35%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--st-red) 6%, transparent); }
+.lb-alerta__info { display: grid; gap: .2rem; }
+.lb-alerta__info strong { font-size: 1rem; }
+.lb-alerta__info .faint { font-size: .8rem; }
+.lb-alerta__info p { margin: .3rem 0 0; font-size: .9rem; white-space: pre-wrap; }
+.lb-alerta__acoes { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.lb-adiar { width: auto; min-width: 140px; height: 34px; font-size: .8rem; }

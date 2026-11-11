@@ -56,7 +56,7 @@
   const utf8 = (s) => unescape(encodeURIComponent(s));
 
   const PERMISSOES = {
-    supervisora: ['dashboard', 'os.criar', 'os.editar', 'os.cancelar', 'os.todas', 'clientes', 'clientes.importar', 'tecnicos', 'materiais', 'links', 'pdf', 'relatorios', 'config', 'historico'],
+    supervisora: ['dashboard', 'os.criar', 'os.editar', 'os.cancelar', 'os.todas', 'clientes', 'clientes.importar', 'tecnicos', 'materiais', 'links', 'pdf', 'relatorios', 'config', 'historico', 'lembretes'],
     tecnico: ['os.proprias', 'atendimento', 'pdf', 'historico'],
     cliente: ['os.link'],
   };

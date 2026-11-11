@@ -56,6 +56,7 @@
     [/^\/os\/ver\/([\w-]+)$/, 'Detalhe da OS', 'os.todas', (el, m) => VG.OS.renderDetail(el, m[1]), 'os'],
     [/^\/os\/fechar\/([\w-]+)$/, 'Fechar O.S', 'os.editar', (el, m) => VG.OS.renderFechar(el, m[1]), 'os'],
     [/^\/clientes$/, 'Clientes', 'clientes', (el) => VG.Clientes.render(el), 'clientes'],
+    [/^\/lembretes$/, 'Lembretes', 'lembretes', (el) => VG.Lembretes.render(el), 'lembretes'],
     [/^\/tecnicos$/, 'Técnicos', 'tecnicos', (el) => VG.Tecnicos.render(el), 'tecnicos'],
     [/^\/materiais$/, 'Materiais e valores', 'materiais', (el) => VG.Materiais.render(el), 'materiais'],
     [/^\/relatorios$/, 'Relatórios', 'relatorios', (el) => VG.Relatorios.render(el), 'relatorios'],
@@ -326,6 +327,7 @@
       ${item('dashboard', '#/dashboard', 'grid', 'Dashboard')}
       ${item('os', '#/os', 'os', 'Ordens de Serviço', ativas)}
       ${item('nova', '#/os/nova', 'plus', 'Nova OS')}
+      <a class="nav-item" data-nav="lembretes" href="#/lembretes">${VG.icon('bell')}<span>Lembretes</span><span class="count count--alerta" data-lemb-count hidden></span></a>
       <div class="nav__group">Cadastros</div>
       ${item('clientes', '#/clientes', 'users', 'Clientes', S().list('clientes').length)}
       ${item('tecnicos', '#/tecnicos', 'shield', 'Técnicos')}
@@ -359,6 +361,7 @@
               <button class="btn btn-ghost btn-icon topbar__menu" id="btn-menu" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">${VG.icon('menu')}</button>
               <h2 class="topbar__title" id="topbar-title"></h2>
               ${sess.papel === 'supervisora' ? `<form class="topbar__search" id="gsearch" role="search"><div class="input-group">${VG.icon('search')}<input class="input" id="gsearch-q" placeholder="Pesquisar OS, cliente, CPF/CNPJ…" aria-label="Pesquisa rápida"></div></form>` : '<span style="margin-left:auto"></span>'}
+              ${sess.papel === 'supervisora' ? `<a class="btn btn-ghost btn-icon topbar__bell" href="#/lembretes" title="Lembretes" aria-label="Lembretes">${VG.icon('bell')}<span class="topbar__bell-n" data-lemb-count hidden></span></a>` : ''}
               ${Theme.button(true)}
             </header>
             <main class="content" id="content"></main>
@@ -382,6 +385,7 @@
       shellMounted = true;
     }
     VG.$('#nav').innerHTML = navHTML(sess);
+    if (sess.papel === 'supervisora') { VG.Lembretes.atualizarContadores(); VG.Lembretes.iniciar(); }
     return VG.$('#content');
   }
 

@@ -26,6 +26,15 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **Lembretes de OS:** agende dia e hora para lembrar de abrir OS de um cliente.
+  - **Onde criar:** sino na lista de **Clientes**, botão **Agendar lembrete** no detalhe do cliente, ou menu **Lembretes → Novo lembrete**.
+  - **Campos:** dia, hora, o que fazer, **Repetir** (não repete, todo mês, a cada 3 ou 6 meses, todo ano) e **Avisar** (só a mim ou toda a supervisão).
+  - **No horário:** aparece o alerta com som e vibração em qualquer tela do sistema aberta. Se a aba estiver em segundo plano e o navegador tiver permissão, chega também uma notificação. O sino no topo e o item **Lembretes** do menu mostram em vermelho quantos estão vencidos.
+  - **Ações no alerta:** **Abrir OS** (abre a Nova OS com o cliente já escolhido; ao criar a OS, o lembrete é concluído), **Adiar** (15 min, 1 h, 4 h ou amanhã 08:00), **Concluir** sem OS, ou **Lembrar em 10 min**.
+  - **Repetição:** lembrete que repete não some ao concluir; ele é reagendado para o próximo período (ex.: preventiva semestral).
+  - **Quem vê:** cada supervisora vê os lembretes que criou e os marcados para toda a supervisão. A supervisão geral vê todos.
+  - **Limite:** o alerta depende do sistema estar aberto (navegador ou app instalado). Com tudo fechado, ele aparece assim que alguém da supervisão entrar.
+  - **Ativação:** cole o `Code.gs` novo e publique uma nova versão. A aba **Lembretes** é criada sozinha na planilha.
 - **QR Code do cliente:** em **Clientes**, o botão **QR** (na lista ou no detalhe do cliente) gera a etiqueta do cliente para colar na central.
   - Quem lê o QR com a câmera do celular vê o **local da central**, o **acesso remoto** (plataforma/app, usuário, senha e observações) e a **última manutenção** (OS, data, técnico, problema, diagnóstico e serviço).
   - **O QR não guarda nenhum dado do cliente**, só um código. Para ver os dados é preciso digitar o **PIN da equipe técnica** (6 números). A supervisora logada no mesmo celular vê sem PIN.

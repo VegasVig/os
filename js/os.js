@@ -488,6 +488,7 @@
           if (tec) S().hist(nova, `OS enviada para ${tec.nome}.`, autor);
           Object.assign(nova, await S().createOS(nova)); // número e links gerados no servidor
           S().log(`OS #${nova.numero} criada`, nova.id, 'plus');
+          if (params.lembrete && VG.Lembretes) VG.Lembretes.osCriada(params.lembrete, nova.numero);
           if (tec) S().log(`Técnico ${tec.nome.split(' ')[0]} recebeu a OS #${nova.numero}`, nova.id, 'user');
           location.hash = '#/os/ver/' + nova.id;
           VG.toast(tec ? `OS #${nova.numero} criada e enviada para ${tec.nome}. Ela já aparece na lista do técnico.` : `OS #${nova.numero} criada. Escolha o técnico na própria OS.`, 'success', 6000);

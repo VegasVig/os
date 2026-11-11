@@ -74,6 +74,7 @@
             <td data-label="Cidade">${VG.esc([c.cidade, c.estado].filter(Boolean).join(' - ') || '—')}</td>
             <td data-label="Status">${(c.status || 'ativo') === 'ativo' ? '<span class="badge badge--green"><i></i>Ativo</span>' : '<span class="badge badge--gray"><i></i>Inativo</span>'}</td>
             <td data-label="" class="row-actions-cell"><div class="row-actions">
+              <button class="btn btn-ghost btn-icon lb-btn" data-act="lemb" title="Agendar lembrete de OS" aria-label="Agendar lembrete de OS">${VG.icon('bell')}${VG.Lembretes.doCliente(c.id).length ? '<i class="lb-dot"></i>' : ''}</button>
               <button class="btn btn-ghost btn-icon" data-act="qr" title="QR Code do cliente" aria-label="QR Code do cliente">${VG.icon('qr')}</button>
               <button class="btn btn-ghost btn-icon" data-act="view" title="Visualizar" aria-label="Visualizar">${VG.icon('eye')}</button>
               <button class="btn btn-ghost btn-icon" data-act="edit" title="Editar" aria-label="Editar">${VG.icon('edit')}</button>
@@ -88,6 +89,7 @@
       const id = tr.dataset.id;
       tr.querySelector('[data-act=view]').onclick = () => ver(id);
       tr.querySelector('[data-act=qr]').onclick = () => VG.QRCliente.abrir(id);
+      tr.querySelector('[data-act=lemb]').onclick = () => VG.Lembretes.form({ clienteId: id, onSave: () => table(el) });
       tr.querySelector('[data-act=edit]').onclick = () => form(id, () => table(el));
       tr.querySelector('[data-act=del]').onclick = () => excluir(id, () => table(el));
     });
@@ -98,6 +100,7 @@
     if (!c) return;
     const ordens = S().list('ordens').filter((o) => o.clienteId === id).sort((a, b) => b.numero - a.numero);
     const ac = c.acesso || {};
+    const lembs = VG.Lembretes.doCliente(id);
     VG.modal({
       title: c.nome, size: 'lg',
       body: `
@@ -108,6 +111,7 @@
           <div class="kv__item span-all" style="grid-column:1/-1">${'<div class="kv__k">Endereço</div><div class="kv__v">' + VG.esc(VG.enderecoCompleto(c) || '—') + '</div>'}</div>
           <div class="kv__item span-all" style="grid-column:1/-1"><div class="kv__k">Local da central</div><div class="kv__v">${VG.esc(c.localCentral || '—')}</div></div>
           ${VG.kv('Acesso remoto', [ac.plataforma, ac.usuario && 'usuário ' + ac.usuario, ac.temSenha ? 'senha cadastrada' : ac.usuario ? 'sem senha' : ''].filter(Boolean).join(' · '))}
+          ${VG.kv('Lembretes', lembs.length ? lembs.map((l) => `${VG.fmtDateTime(l.dataHora)}${l.motivo ? ' · ' + l.motivo : ''}`).join(' | ') : 'nenhum agendado')}
           ${VG.kv('QR Code', c.qrToken ? `ativo · ${(c.qrAcessos || []).length ? 'última consulta ' + VG.fmtDateTime(c.qrAcessos[0].em) + ' (' + c.qrAcessos[0].por + ')' : 'nunca consultado'}` : 'não gerado')}
         </div>
         <hr class="divider">
@@ -117,6 +121,7 @@
           : '<p class="muted" style="margin:0">Nenhuma OS para este cliente.</p>'}`,
       actions: [
         { label: 'Fechar' },
+        { label: 'Agendar lembrete', cls: 'btn', icon: 'bell', onClick: () => { VG.Lembretes.form({ clienteId: id }); } },
         { label: 'QR Code', cls: 'btn', icon: 'qr', onClick: () => { VG.QRCliente.abrir(id); } },
         ...(VG.Auth.can('os.criar') ? [{ label: 'Nova OS para este cliente', cls: 'btn-primary', icon: 'plus', onClick: () => { location.hash = `#/os/nova?cliente=${c.id}`; } }] : []),
       ],
