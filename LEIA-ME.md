@@ -26,6 +26,20 @@ O sistema começa vazio, só com o usuário `supervisora`.
 - **Supervisao Estoque:** vê as OS de todas, confere, marca como processada e reabre. Não importa backup nem apaga dados. É criado sozinho quando o `Code.gs` novo é publicado.
 
 ## Novidades desta versão
+- **QR Code do cliente:** em **Clientes**, o botão **QR** (na lista ou no detalhe do cliente) gera a etiqueta do cliente para colar na central.
+  - Quem lê o QR com a câmera do celular vê o **local da central**, o **acesso remoto** (plataforma/app, usuário, senha e observações) e a **última manutenção** (OS, data, técnico, problema, diagnóstico e serviço).
+  - **O QR não guarda nenhum dado do cliente**, só um código. Para ver os dados é preciso digitar o **PIN da equipe técnica** (6 números). A supervisora logada no mesmo celular vê sem PIN.
+  - **5 PINs errados** bloqueiam aquele QR por 15 minutos. A tela de dados se fecha sozinha em 5 minutos.
+  - **Toda consulta fica registrada:** aparece em **Últimas consultas** (no QR do cliente), no detalhe do cliente e na atividade recente.
+  - **Gerar novo:** cria outro QR e a etiqueta antiga para de funcionar na hora (etiqueta perdida, técnico desligado). **Desativar:** o QR para de funcionar até gerar outro.
+  - **Imprimir etiqueta** (80 mm, com logo, nome e código do cliente) ou **Baixar PNG**.
+  - **Última manutenção:** a OS mais recente já finalizada pelo técnico (Realizada, Processada ou Reaberta). Não entram Venda, Retirada e OS resolvida por telefone.
+- **Cadastro do cliente:** novos campos **Local da central**, **Plataforma / app**, **Usuário**, **Senha** e **Observações do acesso**.
+  - A senha **não volta para a tela** depois de salva (aparece "Senha salva"). Campo em branco mantém a senha atual; para trocar, digite a nova; para remover, marque **Apagar a senha salva**.
+  - Importar clientes CSV e importar backup **não apagam** as senhas já salvas. O backup exportado **não leva as senhas** (elas ficam só na planilha).
+- **PIN do QR:** em **Configurações → PIN do QR dos clientes**. Só a supervisão geral (usuário `supervisora`) define ou troca. PIN com números repetidos ou em sequência é recusado. Enquanto o PIN não for definido, só a supervisora logada consegue ver os dados pelo QR. Troque o PIN sempre que alguém sair da equipe técnica.
+- **Para ativar:** cole o `Code.gs` novo e publique uma **nova versão**. Envie ao GitHub os arquivos novos `js/qr-cliente.js` e `js/vendor/qrcode.js`, além dos que mudaram (`index.html`, `sw.js`, `css/style.css`, `js/app.js`, `js/clientes.js`, `js/configuracoes.js`, `js/storage.js`, `js/utils.js`). Depois defina o PIN em Configurações.
+- **Atenção:** a senha do acesso remoto fica gravada na planilha do banco. Deixe a planilha compartilhada só com quem administra o sistema.
 - **Clientes com o mesmo CNPJ (vários contratos):** novo campo **Nome fantasia / contrato**. O mesmo CPF/CNPJ no mesmo endereço é aceito quando o nome ou o nome fantasia muda. Na importação, só é ignorado quem já tem o **código** cadastrado (ou tudo igual, quando a linha vem sem código). Cadastro antigo sem nome fantasia que bate com a planilha é reconhecido como o mesmo cliente e **recebe o nome fantasia** e o código do ERP (campo `codigoErp`), sem trocar o código que já está nas OS. Vários e-mails no mesmo campo (separados por `;`) agora são aceitos. A coluna `status` aceita `ativo`/`inativo`. O nome fantasia aparece na busca, na escolha do cliente da OS, no detalhe, na tela do técnico e no PDF.
 - **Fechar O.S pela supervisão:** o botão **Fechar O.S** abre a OS na mesma tela do técnico (cliente, problema, equipamento, materiais para levar, diagnóstico, serviço, materiais utilizados e observações), **sem fotos e sem assinaturas**. Precisa do `Code.gs` novo para gravar as observações.
 - **Cliente com OS aberta:** ao escolher um cliente em **Nova ordem de serviço**, aparece um aviso se ele já tem OS **Aberta**, **Aguardando técnico** ou **Em atendimento**. Ao tocar em **Criar ordem de serviço**, o sistema pergunta:
@@ -121,7 +135,7 @@ O link do cliente continua disponível, mas só é necessário quando o cliente 
 ## Parte 2 — Telas no GitHub
 
 1. **Crie o repositório.** Em **New repository**, dê um nome (ex.: `vegas-os`), marque **Public** e crie.
-2. **Envie os arquivos.** Clique em **Add file → Upload files** e arraste as pastas `css`, `js` e `assets`, e os arquivos `index.html` e `.nojekyll`. Não envie a pasta `apps-script`. Depois clique em **Commit changes**.
+2. **Envie os arquivos.** Clique em **Add file → Upload files** e arraste as pastas `css`, `js` (com a subpasta `vendor`) e `assets`, e os arquivos `index.html`, `sw.js`, `manifest.json` e `.nojekyll`. Não envie a pasta `apps-script`. Depois clique em **Commit changes**.
 3. **Configure o endereço do servidor.** Abra **`js/config.js`**, clique no ✏ e troque `COLE_AQUI_O_ENDERECO_DO_APPS_SCRIPT` pelo endereço `/exec`, mantendo as aspas. Clique em **Commit changes**.
 4. **Ative o site.** Em **Settings → Pages**, escolha a branch **main** e a pasta **/(root)** e clique em **Save**.
 5. **Primeiro acesso.**

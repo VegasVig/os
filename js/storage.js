@@ -348,6 +348,9 @@
       }
     },
 
+    /** Atualiza a cópia local da configuração com o que o servidor devolveu (sem reenviar) */
+    mergeConfig(c) { mem.config = Object.assign({}, mem.config, c || {}); },
+
     getTheme() { try { return localStorage.getItem(PREFIX + 'theme') || memLocal.theme || 'dark'; } catch (e) { return memLocal.theme || 'dark'; } },
     setTheme(t) { memLocal.theme = t; try { localStorage.setItem(PREFIX + 'theme', t); } catch (e) {} },
 

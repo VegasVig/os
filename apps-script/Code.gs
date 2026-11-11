@@ -28,7 +28,15 @@ const CFG = {
   MAX_ATIVIDADES: 300,
   VERSAO_BANCO: '4',        // 4 = cria a aba Materiais (cadastro de materiais e valores)
   MAX_MATERIAIS: 5000,      // limite de itens por importação CSV de materiais
+  QR_PIN_TENTATIVAS: 5,     // QR do cliente: erros de PIN antes do bloqueio
+  QR_PIN_BLOQUEIO_SEG: 900, // bloqueio de 15 min daquele QR após errar o PIN
+  QR_ACESSOS_MAX: 30,       // consultas guardadas no cadastro do cliente
 };
+
+/** Campos do QR do cliente: só mudam pelas ações qrClienteGerenciar / qrCliente */
+const CAMPOS_QR_ = ['qrToken', 'qrGeradoEm', 'qrGeradoPor', 'qrAcessos'];
+/** Tipos de OS que não contam como "última manutenção" no QR */
+const TIPOS_FORA_QR_ = ['venda', 'retirada'];
 
 const TABELAS = {
   users:      { aba: 'Usuarios',   campos: ['usuario', 'nome', 'papel', 'ativo', 'ultimoAcesso'] },
@@ -89,6 +97,7 @@ function doGet(e) {
     baseUrl: ScriptApp.getService().getUrl(),
     os: String(p.os || '').replace(/\D/g, ''),
     t: String(p.t || '').replace(/[^A-Za-z0-9]/g, ''),
+    qr: String(p.qr || '').replace(/[^A-Za-z0-9]/g, ''),
   }).replace(/</g, '\\u003c');
   return t.evaluate()
     .setTitle('Vegas OS · Ordens de Serviço')
@@ -269,6 +278,7 @@ const ACOES = {
         const dup = ler_('users').find((x) => x.id !== obj.id && norm_(x.usuario) === norm_(obj.usuario));
         if (dup) throw new Error('Este usuário já está em uso.');
       }
+      if (col === 'clientes') obj = protegerCliente_(ler_('clientes').find((x) => x.id === obj.id), obj);
       if (col === 'materiais') {
         obj = limparMaterialCad_(obj);
         if (!obj.codigo) throw new Error('Informe o código do material.');
@@ -289,7 +299,7 @@ const ACOES = {
       obj.atualizadoEm = agora_();
       upsert_(col, obj);
       bump_();
-      return col === 'users' ? semSenha_(obj) : obj;
+      return col === 'users' ? semSenha_(obj) : col === 'clientes' ? clienteParaSup_(obj) : obj;
     });
   },
 
@@ -301,7 +311,12 @@ const ACOES = {
     return comLock_(() => {
       const mapa = {};
       ler_(col).forEach((x) => (mapa[x.id] = x));
-      itens.forEach((x) => { if (!x.id) x.id = tok_(16).toLowerCase(); x.atualizadoEm = agora_(); mapa[x.id] = x; });
+      itens.forEach((x) => {
+        if (!x.id) x.id = tok_(16).toLowerCase();
+        if (col === 'clientes') x = protegerCliente_(mapa[x.id], x);
+        x.atualizadoEm = agora_();
+        mapa[x.id] = x;
+      });
       substituirTudo_(col, Object.keys(mapa).map((k) => mapa[k]));
       bump_();
       return itens.length;
@@ -481,6 +496,7 @@ const ACOES = {
   setConfig(req) {
     sessao_(req, PAPEIS_SUP);
     const patch = req.patch || {};
+    ['pinQrHash', 'pinQrSalt', 'pinQrEm', 'pinQrPor'].forEach((k) => delete patch[k]);
     return comLock_(() => {
       let cfg = Object.assign(config_(), patch);
       cfg = extrairImagens_(cfg, 'Logo');
@@ -499,12 +515,19 @@ const ACOES = {
       throw new Error('O backup precisa ter ao menos um usuário supervisora com senha.');
     }
     return comLock_(() => {
+      // o backup é gerado pelo navegador, que não recebe as senhas do acesso remoto nem o PIN do QR
+      const clientesAtuais = {};
+      ler_('clientes').forEach((c) => (clientesAtuais[c.id] = c));
+      const cfgAtual = config_();
       substituirTudo_('users', users);
-      ['clientes', 'tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
+      ['tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
+      substituirTudo_('clientes', (Array.isArray(d.clientes) ? d.clientes : []).map((c) => protegerCliente_(clientesAtuais[c.id], c, true)));
       // backups antigos não têm a lista de materiais: nesse caso ela é mantida
       if (Array.isArray(d.materiais)) substituirTudo_('materiais', d.materiais);
       substituirTudo_('ordens', (Array.isArray(d.ordens) ? d.ordens : []).map((o) => extrairImagens_(o, 'OS_' + o.numero)));
-      salvarConfig_(extrairImagens_(Object.assign({}, d.config || {}), 'Logo'));
+      const cfgNova = extrairImagens_(Object.assign({}, d.config || {}), 'Logo');
+      ['pinQrHash', 'pinQrSalt', 'pinQrEm', 'pinQrPor'].forEach((k) => { if (cfgAtual[k]) cfgNova[k] = cfgAtual[k]; else delete cfgNova[k]; });
+      salvarConfig_(cfgNova);
       garantirSupervisoras_();
       invalidarSessoes_();
       bump_();
@@ -522,6 +545,110 @@ const ACOES = {
       bump_();
       return true;
     });
+  },
+
+  /* ---------- QR Code do cliente ---------- */
+  /** Supervisão: gera (op 'gerar'), troca por um novo (op 'novo', o antigo para de funcionar) ou desativa o QR */
+  qrClienteGerenciar(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    const op = String(req.op || 'gerar');
+    if (['gerar', 'novo', 'desativar'].indexOf(op) < 0) throw new Error('Operação inválida.');
+    return comLock_(() => {
+      const c = ler_('clientes').find((x) => x.id === String(req.clienteId || ''));
+      if (!c) throw new Error('Cliente não encontrado.');
+      if (op === 'desativar') {
+        delete c.qrToken;
+        registrarAtividade_('QR Code do cliente ' + c.nome + ' desativado por ' + s.nome, null, 'lock');
+      } else if (op === 'novo' || !c.qrToken) {
+        const trocou = !!c.qrToken;
+        c.qrToken = tok_(24);
+        c.qrGeradoEm = agora_();
+        c.qrGeradoPor = s.nome;
+        registrarAtividade_('QR Code do cliente ' + c.nome + (trocou ? ' substituído (o anterior foi invalidado)' : ' gerado') + ' por ' + s.nome, null, 'lock');
+      }
+      c.atualizadoEm = agora_();
+      upsert_('clientes', c);
+      bump_();
+      return clienteParaSup_(c);
+    });
+  },
+
+  /** Supervisão geral: define o PIN de 6 dígitos que o técnico digita ao ler o QR */
+  setPinQr(req) {
+    const s = sessao_(req, PAPEIS_SUP);
+    exigirGeral_(s);
+    const pin = String(req.pin || '');
+    if (!/^\d{6}$/.test(pin)) throw new Error('O PIN precisa ter exatamente 6 números.');
+    if (/^(\d)\1{5}$/.test(pin) || '0123456789'.indexOf(pin) >= 0 || '9876543210'.indexOf(pin) >= 0) throw new Error('PIN fácil demais. Evite números repetidos ou em sequência.');
+    return comLock_(() => {
+      const cfg = config_();
+      cfg.pinQrSalt = tok_(16);
+      cfg.pinQrHash = hash_(pin, cfg.pinQrSalt);
+      cfg.pinQrEm = agora_();
+      cfg.pinQrPor = s.nome;
+      salvarConfig_(cfg);
+      registrarAtividade_('PIN do QR dos clientes alterado por ' + s.nome, null, 'lock');
+      bump_();
+      return publicoConfig_(cfg, true);
+    });
+  },
+
+  /**
+   * Leitura do QR (sem login). Supervisora logada vê direto; os demais precisam do PIN.
+   * Cada consulta liberada fica registrada no cadastro do cliente e nas atividades.
+   */
+  qrCliente(req) {
+    const qr = String(req.qr || '').replace(/[^A-Za-z0-9]/g, '');
+    if (qr.length < 16) throw new Error('QR Code inválido.');
+    const c = ler_('clientes').find((x) => x.qrToken === qr);
+    if (!c) throw new Error('Este QR Code não é válido ou foi substituído. Peça uma nova etiqueta à supervisão.');
+    if (c.status === 'inativo') throw new Error('Este cliente está inativo. Fale com a supervisão.');
+
+    let s = null;
+    if (req.token) { try { s = sessao_(req, null, true); } catch (e) { s = null; } }
+    const sup = !!s && s.papel === 'supervisora';
+    const basico = { nome: c.nome, fantasia: c.fantasia || '', codigo: c.codigo || '' };
+
+    if (!sup) {
+      const cfg = config_();
+      if (!cfg.pinQrHash) return { precisaPin: true, semPin: true, cliente: basico };
+      const pin = String(req.pin || '');
+      if (!pin) return { precisaPin: true, cliente: basico };
+      const cache = CacheService.getScriptCache();
+      const key = 'qp_' + qr;
+      const lk = JSON.parse(cache.get(key) || '{"f":0}');
+      if (lk.ate && lk.ate > Date.now()) throw new Error('Muitas tentativas erradas. Este QR fica bloqueado por ' + Math.ceil((lk.ate - Date.now()) / 60000) + ' min.');
+      if (hash_(pin, cfg.pinQrSalt) !== cfg.pinQrHash) {
+        const f = (lk.f || 0) + 1;
+        const bloqueia = f >= CFG.QR_PIN_TENTATIVAS;
+        cache.put(key, JSON.stringify(bloqueia ? { f: 0, ate: Date.now() + CFG.QR_PIN_BLOQUEIO_SEG * 1000 } : { f: f }), CFG.QR_PIN_BLOQUEIO_SEG);
+        if (bloqueia) {
+          comLock_(() => { registrarAtividade_('QR do cliente ' + c.nome + ' bloqueado: ' + CFG.QR_PIN_TENTATIVAS + ' PINs errados', null, 'alert'); bump_(); });
+          throw new Error('PIN incorreto. Este QR foi bloqueado por ' + Math.round(CFG.QR_PIN_BLOQUEIO_SEG / 60) + ' min.');
+        }
+        throw new Error('PIN incorreto. Restam ' + (CFG.QR_PIN_TENTATIVAS - f) + ' tentativa(s).');
+      }
+      cache.remove(key);
+    }
+
+    const por = sup ? s.nome + ' (supervisão)' : s && s.papel === 'tecnico' ? s.nome + ' (técnico)' : 'PIN, sem login';
+    comLock_(() => {
+      const atual = ler_('clientes').find((x) => x.id === c.id);
+      if (!atual) return;
+      atual.qrAcessos = [{ em: agora_(), por: por }].concat(atual.qrAcessos || []).slice(0, CFG.QR_ACESSOS_MAX);
+      upsert_('clientes', atual);
+      registrarAtividade_('QR do cliente ' + c.nome + ' consultado: ' + por, null, 'lock');
+      bump_();
+    });
+
+    const a = c.acesso || {};
+    return {
+      cliente: Object.assign(basico, { endereco: enderecoTxt_(c) }),
+      localCentral: c.localCentral || '',
+      acesso: { plataforma: a.plataforma || '', usuario: a.usuario || '', senha: a.senha || '', obs: a.obs || '' },
+      ultima: ultimaManutencao_(c.id),
+      consultadoPor: por,
+    };
   },
 
   /* ---------- Conferência da supervisão ---------- */
@@ -1057,6 +1184,68 @@ function autorizarEmail() {
 }
 
 /** OS que esta supervisora pode conferir */
+/* =========================================================================
+   QR CODE DO CLIENTE
+   ========================================================================= */
+/**
+ * Mantém no cliente o que o navegador não pode alterar pelo cadastro:
+ * campos do QR (sempre os do servidor) e a senha do acesso remoto
+ * (a supervisão não recebe a senha; campo em branco = manter a atual).
+ * `deBackup`: no backup vale o QR que veio no arquivo.
+ */
+function protegerCliente_(atual, novo, deBackup) {
+  const c = Object.assign({}, novo);
+  if (!deBackup || !c.qrToken) {
+    CAMPOS_QR_.forEach((k) => { if (atual && atual[k] !== undefined) c[k] = atual[k]; else if (!deBackup) delete c[k]; });
+  }
+  const senhaAtual = atual && atual.acesso && atual.acesso.senha ? atual.acesso.senha : '';
+  if (c.acesso && typeof c.acesso === 'object') {
+    const ac = {
+      plataforma: String(c.acesso.plataforma || '').trim().slice(0, 120),
+      usuario: String(c.acesso.usuario || '').trim().slice(0, 200),
+      senha: String(c.acesso.senha || '').slice(0, 200),
+      obs: String(c.acesso.obs || '').trim().slice(0, 500),
+    };
+    if (!ac.senha && !c.acesso.limparSenha) ac.senha = senhaAtual;
+    c.acesso = ac;
+  } else if (senhaAtual) {
+    c.acesso = Object.assign({}, atual.acesso);
+  }
+  if (c.localCentral != null) c.localCentral = String(c.localCentral).trim().slice(0, 500);
+  return c;
+}
+
+/** Cliente como a supervisão recebe: sem a senha do acesso remoto (só a indicação de que existe) */
+function clienteParaSup_(c) {
+  const out = Object.assign({}, c);
+  if (c.acesso) {
+    out.acesso = Object.assign({}, c.acesso, { temSenha: !!c.acesso.senha });
+    delete out.acesso.senha;
+  }
+  return out;
+}
+
+function enderecoTxt_(c) {
+  return [[c.endereco, c.numero].filter(Boolean).join(', '), c.complemento, c.bairro, [c.cidade, c.estado].filter(Boolean).join(' - ')].filter(Boolean).join(' · ');
+}
+
+/** Última OS atendida em campo para o cliente (sem venda, retirada ou resolução por telefone) */
+function ultimaManutencao_(clienteId) {
+  const fim = (o) => (o.atendimento && o.atendimento.fim) || o.processadaEm || o.atualizadoEm || '';
+  const os = ler_('ordens')
+    .filter((o) => o.clienteId === clienteId && CONCLUIDAS_.indexOf(o.status) >= 0 && !o.resolucaoRemota && TIPOS_FORA_QR_.indexOf(norm_(o.tipo)) < 0)
+    .sort((a, b) => String(fim(b)).localeCompare(String(fim(a))))[0];
+  if (!os) return null;
+  const at = os.atendimento || {};
+  return {
+    numero: os.numero, tipo: os.tipo || '', data: fim(os), tecnico: os.tecnicoNome || '',
+    problema: String(os.problema || '').slice(0, 600),
+    diagnostico: String(at.diagnostico || '').slice(0, 600),
+    servico: String(at.servico || '').slice(0, 1000),
+    equipamentoLocal: (os.equipamento && os.equipamento.local) || '',
+  };
+}
+
 function osDaSupervisao_(s, id) {
   const os = ler_('ordens').find((o) => o.id === String(id || ''));
   if (!os) throw new Error('OS não encontrada.');
@@ -1093,7 +1282,7 @@ function snapshot_(s) {
   const out = { rev: rev_(), atividades: [], users: [], clientes: [], tecnicos: [], ordens: [], materiais: [] };
   if (s.papel === 'supervisora') {
     out.users = ler_('users').map(semSenha_);
-    out.clientes = ler_('clientes');
+    out.clientes = ler_('clientes').map(clienteParaSup_);
     out.tecnicos = ler_('tecnicos');
     out.materiais = ler_('materiais');
     out.ordens = ler_('ordens').filter((o) => podeVerOS_(s, o));
@@ -1116,6 +1305,8 @@ function publicoConfig_(cfg, completo) {
     logoDataUrl: cfg.logoDataUrl || '', ultimoNumeroOS: cfg.ultimoNumeroOS || 1000,
   };
   if (completo) {
+    c.temPinQr = !!cfg.pinQrHash;
+    c.pinQrEm = cfg.pinQrEm || '';
     c._planilhaUrl = banco_().getUrl();
     c._pastaUrl = pasta_().getUrl();
   }

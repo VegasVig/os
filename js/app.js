@@ -64,6 +64,7 @@
     [/^\/atendimento\/([\w-]+)$/, 'Atendimento', 'atendimento', (el, m) => atendimentoLogado(el, m[1]), 'minhas'],
   ];
   const PUBLIC_LINK = /^\/os\/(\d+)\/([A-Za-z0-9]+)$/;
+  const PUBLIC_QR = /^\/qr\/([A-Za-z0-9]+)$/;
 
   let routeSeq = 0;
   const bootHTML = (txt) => `<div class="boot">${VG.logoImg('boot__logo')}<span class="spinner"></span><span class="boot__txt">${VG.esc(txt)}</span></div>`;
@@ -72,6 +73,7 @@
   function route() {
     closeDrawer();
     VG.Portal && VG.Portal.cleanup();
+    VG.QRCliente && VG.QRCliente.cleanup();
     document.getElementById('modal-root').innerHTML = '';
     const { path, params } = parseHash();
     const sess = VG.Auth.current();
@@ -93,10 +95,16 @@
     routeSeq++;
     if (VG.Store.isPublic()) {
       VG.Store.setPublic(null);
-      // ao sair de um link público sem login, os dados daquela OS não ficam na memória
       if (!sess) VG.Store.clear();
     }
 
+    // 1b) QR Code do cliente — sem login; dados liberados pelo PIN ou pela supervisora logada
+    const qr = path.match(PUBLIC_QR);
+    if (qr) {
+      shellMounted = false;
+      document.title = 'QR do cliente · Vegas';
+      return VG.QRCliente.renderPublico(app(), qr[1]);
+    }
     // 2) Login
     if (path.indexOf('/login') === 0 || !sess) {
       if (sess) return go(homeFor(sess));
@@ -403,6 +411,7 @@
   async function sincronizar(forcar) {
     const sess = VG.Auth.current();
     if (!sess || VG.Store.isPublic()) return;
+    if (/^#\/qr\//.test(location.hash)) return; // tela do QR: cada recarga registraria uma nova consulta
     if (!forcar) {
       if (document.hidden || VG.Store.pendentes() > 0) return;
       if (document.querySelector('.modal-backdrop, .sigpad')) return;
@@ -468,7 +477,11 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
     const boot = window.VG_BOOT || {};
-    if (boot.os && boot.t) {
+    if (boot.qr) {
+      // etiqueta do cliente: ?qr=TOKEN
+      history.replaceState(null, '', location.pathname + `#/qr/${boot.qr}`);
+      if (VG.Auth.current()) { try { await VG.Auth.restore(); } catch (e) { /* QR funciona sem login */ } }
+    } else if (boot.os && boot.t) {
       // aberto por link exclusivo: ?os=1045&t=TOKEN
       history.replaceState(null, '', location.pathname + (window.VG_CONFIG && window.VG_CONFIG.API_URL ? '' : location.search) + `#/os/${boot.os}/${boot.t}`);
     } else if (VG.Auth.current()) {

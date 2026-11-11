@@ -74,6 +74,7 @@
             <td data-label="Cidade">${VG.esc([c.cidade, c.estado].filter(Boolean).join(' - ') || '—')}</td>
             <td data-label="Status">${(c.status || 'ativo') === 'ativo' ? '<span class="badge badge--green"><i></i>Ativo</span>' : '<span class="badge badge--gray"><i></i>Inativo</span>'}</td>
             <td data-label="" class="row-actions-cell"><div class="row-actions">
+              <button class="btn btn-ghost btn-icon" data-act="qr" title="QR Code do cliente" aria-label="QR Code do cliente">${VG.icon('qr')}</button>
               <button class="btn btn-ghost btn-icon" data-act="view" title="Visualizar" aria-label="Visualizar">${VG.icon('eye')}</button>
               <button class="btn btn-ghost btn-icon" data-act="edit" title="Editar" aria-label="Editar">${VG.icon('edit')}</button>
               <button class="btn btn-ghost btn-icon" data-act="del" title="Excluir" aria-label="Excluir">${VG.icon('trash')}</button>
@@ -86,6 +87,7 @@
     box.querySelectorAll('tr[data-id]').forEach((tr) => {
       const id = tr.dataset.id;
       tr.querySelector('[data-act=view]').onclick = () => ver(id);
+      tr.querySelector('[data-act=qr]').onclick = () => VG.QRCliente.abrir(id);
       tr.querySelector('[data-act=edit]').onclick = () => form(id, () => table(el));
       tr.querySelector('[data-act=del]').onclick = () => excluir(id, () => table(el));
     });
@@ -95,6 +97,7 @@
     const c = S().get('clientes', id);
     if (!c) return;
     const ordens = S().list('ordens').filter((o) => o.clienteId === id).sort((a, b) => b.numero - a.numero);
+    const ac = c.acesso || {};
     VG.modal({
       title: c.nome, size: 'lg',
       body: `
@@ -103,6 +106,9 @@
           ${VG.kv('Telefone', c.telefone ? `<a href="tel:${VG.digits(c.telefone)}">${VG.esc(VG.fmtPhone(c.telefone))}</a>` : '', true)}
           ${VG.kv('E-mail', c.email ? `<a href="mailto:${VG.esc(c.email)}">${VG.esc(c.email)}</a>` : '', true)}
           <div class="kv__item span-all" style="grid-column:1/-1">${'<div class="kv__k">Endereço</div><div class="kv__v">' + VG.esc(VG.enderecoCompleto(c) || '—') + '</div>'}</div>
+          <div class="kv__item span-all" style="grid-column:1/-1"><div class="kv__k">Local da central</div><div class="kv__v">${VG.esc(c.localCentral || '—')}</div></div>
+          ${VG.kv('Acesso remoto', [ac.plataforma, ac.usuario && 'usuário ' + ac.usuario, ac.temSenha ? 'senha cadastrada' : ac.usuario ? 'sem senha' : ''].filter(Boolean).join(' · '))}
+          ${VG.kv('QR Code', c.qrToken ? `ativo · ${(c.qrAcessos || []).length ? 'última consulta ' + VG.fmtDateTime(c.qrAcessos[0].em) + ' (' + c.qrAcessos[0].por + ')' : 'nunca consultado'}` : 'não gerado')}
         </div>
         <hr class="divider">
         <h4 style="margin-bottom:.6rem;font-size:.95rem">Ordens de serviço (${ordens.length})</h4>
@@ -111,6 +117,7 @@
           : '<p class="muted" style="margin:0">Nenhuma OS para este cliente.</p>'}`,
       actions: [
         { label: 'Fechar' },
+        { label: 'QR Code', cls: 'btn', icon: 'qr', onClick: () => { VG.QRCliente.abrir(id); } },
         ...(VG.Auth.can('os.criar') ? [{ label: 'Nova OS para este cliente', cls: 'btn-primary', icon: 'plus', onClick: () => { location.hash = `#/os/nova?cliente=${c.id}`; } }] : []),
       ],
       onOpen: (m, api) => m.querySelectorAll('[data-os]').forEach((tr) => (tr.onclick = () => { api.close(); location.hash = '#/os/ver/' + tr.dataset.os; })),
@@ -120,6 +127,7 @@
   /** Formulário de cliente (novo/editar). onSaved(cliente) */
   function form(id, onSaved) {
     const c = id ? S().get('clientes', id) : { codigo: nextCodigo(), status: 'ativo' };
+    const ac = c.acesso || {};
     const f = (name, label, opts = {}) => `
       <div class="field ${opts.cls || ''}"><label for="cf-${name}">${label}${opts.req ? '<span class="req">*</span>' : ''}</label>
       <input id="cf-${name}" name="${name}" class="input" value="${VG.esc(opts.value != null ? opts.value : c[name] || '')}" ${opts.attrs || ''}></div>`;
@@ -142,6 +150,16 @@
           ${f('estado', 'UF', { attrs: 'maxlength="2" style="text-transform:uppercase"' })}
           <div class="field"><label for="cf-status">Status</label>
             <select id="cf-status" name="status" class="select"><option value="ativo">Ativo</option><option value="inativo" ${c.status === 'inativo' ? 'selected' : ''}>Inativo</option></select></div>
+          <div class="cf-sec">${VG.icon('qr')}Central e acesso remoto <span class="hint" style="font-weight:400">(aparecem no QR Code do cliente)</span></div>
+          <div class="field span-all"><label for="cf-localCentral">Local da central</label>
+            <textarea id="cf-localCentral" name="localCentral" class="textarea" rows="2" maxlength="500" placeholder="Ex.: Depósito dos fundos, atrás da porta, dentro do armário de metal">${VG.esc(c.localCentral || '')}</textarea></div>
+          ${f('ac_plataforma', 'Plataforma / app', { value: ac.plataforma || '', attrs: 'maxlength="120" placeholder="Ex.: AMT Remoto, ISIC"' })}
+          ${f('ac_usuario', 'Usuário do acesso remoto', { value: ac.usuario || '', attrs: 'maxlength="200" autocomplete="off"' })}
+          <div class="field span-2"><label for="cf-ac_senha">Senha do acesso remoto</label>
+            <input id="cf-ac_senha" name="ac_senha" type="password" class="input" maxlength="200" autocomplete="new-password" placeholder="${ac.temSenha ? 'Senha salva — em branco mantém a atual' : ''}">
+            ${ac.temSenha ? '<label class="check" style="margin-top:.4rem"><input type="checkbox" name="ac_limpar" value="1"><span>Apagar a senha salva</span></label>' : '<span class="hint">A senha não volta para esta tela. Para conferir, leia o QR logada.</span>'}</div>
+          <div class="field span-all"><label for="cf-ac_obs">Observações do acesso</label>
+            <input id="cf-ac_obs" name="ac_obs" class="input" maxlength="500" value="${VG.esc(ac.obs || '')}" placeholder="Ex.: conta do cliente, partição 2, porta 9009"></div>
         </form>`,
       onOpen: (m) => {
         VG.bindMasks(m);
@@ -184,8 +202,15 @@
             codigo: cod || nextCodigo(), nome: fd.nome.trim(), fantasia: fd.fantasia.trim(), cpf_cnpj: doc, telefone: VG.digits(fd.telefone), email: em.valor,
             cep: VG.digits(fd.cep), endereco: fd.endereco.trim(), numero: fd.numero.trim(), complemento: fd.complemento.trim(),
             bairro: fd.bairro.trim(), cidade: fd.cidade.trim(), estado: fd.estado.trim().toUpperCase(), status: fd.status,
+            localCentral: (fd.localCentral || '').trim(),
+            acesso: {
+              plataforma: (fd.ac_plataforma || '').trim(), usuario: (fd.ac_usuario || '').trim(), obs: (fd.ac_obs || '').trim(),
+              ...(fd.ac_senha ? { senha: fd.ac_senha } : {}), ...(fd.ac_limpar && !fd.ac_senha ? { limparSenha: true } : {}),
+              temSenha: fd.ac_senha ? true : fd.ac_limpar ? false : !!ac.temSenha,
+            },
           });
-          S().save('clientes', obj);
+          // a senha digitada não fica na memória do navegador depois de gravada
+          S().saveAsync('clientes', obj).then(() => { if (obj.acesso) { delete obj.acesso.senha; delete obj.acesso.limparSenha; } }).catch(() => {});
           if (!id) S().log(`Cliente ${obj.nome} cadastrado`, null, 'users');
           VG.toast(id ? 'Cliente atualizado.' : 'Cliente cadastrado.', 'success');
           onSaved && onSaved(obj);

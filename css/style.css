@@ -1132,3 +1132,30 @@ html.is-saving::after {
   .mat-ed { width: auto; flex: 1 1 0; }
   .mat-ed.mat-mod { flex-basis: 100%; }
 }
+
+/* ---------- QR CODE DO CLIENTE ---------- */
+.qrc { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 1.1rem; align-items: start; }
+.qrc__img { background: #fff; border-radius: 12px; padding: .5rem; line-height: 0; }
+.qrc__img svg { width: 100%; height: auto; display: block; }
+.qrc__info { display: grid; gap: .6rem; min-width: 0; }
+.qrc__info strong { font-size: 1.05rem; }
+.qrc__info .faint { font-size: .8rem; }
+.qrc__log { display: grid; gap: .2rem; font-size: .8rem; color: var(--text-2); border-top: 1px solid var(--line); padding-top: .6rem; }
+.qrp__nome { font-size: 1.35rem; margin: 0; line-height: 1.25; }
+.qrp__texto { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.qrp__pin { font-size: 1.5rem; letter-spacing: .5rem; text-align: center; }
+.qrp__cred { display: grid; gap: .55rem; }
+.qrp__row { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
+.qrp__row:last-child { border-bottom: 0; padding-bottom: 0; }
+.qrp__row .kv__v { overflow-wrap: anywhere; }
+.qrp__mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.02rem; }
+.qrp__bloco { margin-top: .8rem; }
+.qrp__bloco p { margin: .2rem 0 0; white-space: pre-wrap; font-size: .9rem; line-height: 1.45; }
+.cf-sec { grid-column: 1 / -1; display: flex; align-items: center; gap: .45rem; font-weight: 600; font-size: .9rem; border-top: 1px solid var(--line); padding-top: .9rem; margin-top: .2rem; }
+.cf-sec .icon { width: 17px; height: 17px; }
+@media (max-width: 720px) {
+  .qrc { grid-template-columns: minmax(0, 1fr); }
+  .qrc__img { max-width: 240px; margin: 0 auto; }
+  .qrp__row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .qrp__row .kv__k { grid-column: 1 / -1; }
+}

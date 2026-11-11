@@ -65,6 +65,18 @@
                 <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${VG.icon('check')}<span>Salvar</span></button></div>
               </form></section>
 
+            <section class="panel"><div class="panel__head"><h3>${VG.icon('qr')}PIN do QR dos clientes</h3>
+                <span class="badge ${cfg.temPinQr ? 'badge--green' : 'badge--yellow'}"><i></i>${cfg.temPinQr ? 'Definido' : 'Não definido'}</span></div>
+              ${sess && sess.verTodas ? `<form class="panel__body stack" id="cf-pinqr" novalidate autocomplete="off">
+                <p class="hint" style="margin:0">O técnico digita este PIN ao ler o QR do cliente para ver o local da central, o acesso remoto e a última manutenção. Trocar o PIN não muda as etiquetas já coladas.${cfg.pinQrEm ? ` Última troca: ${v(VG.fmtDateTime(cfg.pinQrEm))}.` : ''}</p>
+                <div class="grid grid-2">
+                  <div class="field"><label for="pq-novo">Novo PIN (6 números)</label><input id="pq-novo" type="password" inputmode="numeric" maxlength="6" class="input" autocomplete="new-password"></div>
+                  <div class="field"><label for="pq-conf">Confirmar PIN</label><input id="pq-conf" type="password" inputmode="numeric" maxlength="6" class="input" autocomplete="new-password"></div>
+                </div>
+                <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${VG.icon('check')}<span>${cfg.temPinQr ? 'Trocar PIN' : 'Definir PIN'}</span></button></div>
+              </form>` : `<div class="panel__body"><p class="hint" style="margin:0">Só a supervisão geral (usuário <b>supervisora</b>) define ou troca o PIN.</p></div>`}
+            </section>
+
             <section class="panel"><div class="panel__head"><h3>${VG.icon('database')}Banco de dados</h3></div>
               <div class="panel__body stack">
                 <p class="hint" style="margin:0">Os dados ficam numa Planilha Google e as fotos e assinaturas numa pasta do Google Drive, na conta de quem publicou o sistema.</p>
@@ -135,6 +147,24 @@
       const n = Math.max(0, Math.min(365, parseInt(VG.$('#cf-val', el).value, 10) || 0));
       try { await S().setConfig({ validadeLinkDias: n }); } catch (err) { return; }
       VG.toast(n ? `Links expiram ${n} dia${n > 1 ? 's' : ''} após a abertura da OS.` : 'Links sem expiração.', 'success');
+    };
+
+    const fPin = VG.$('#cf-pinqr', el);
+    if (fPin) fPin.onsubmit = async (e) => {
+      e.preventDefault();
+      const pin = VG.$('#pq-novo', el).value.trim(), conf = VG.$('#pq-conf', el).value.trim();
+      if (!/^\d{6}$/.test(pin)) return VG.toast('O PIN precisa ter exatamente 6 números.', 'warn');
+      if (pin !== conf) return VG.toast('A confirmação não confere com o PIN.', 'warn');
+      const btn = fPin.querySelector('button[type=submit]');
+      VG.setBusy(btn, true, 'Salvando…');
+      try {
+        S().mergeConfig(await S().call('setPinQr', { pin }));
+        VG.toast('PIN do QR salvo. Passe o novo PIN para a equipe técnica.', 'success', 6000);
+        render(el);
+      } catch (err) {
+        VG.setBusy(btn, false);
+        VG.toast(/desconhecida/i.test(err.message) ? 'O servidor ainda está na versão antiga. Cole o Code.gs novo e publique uma nova versão.' : err.message, 'error', 7000);
+      }
     };
 
     VG.$('#cf-exp', el).onclick = () => {
