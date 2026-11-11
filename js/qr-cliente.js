@@ -141,7 +141,26 @@
 
   /* ---------- LEITURA DO QR (página pública) ---------- */
   let timer = null;
-  function cleanup() { clearTimeout(timer); timer = null; }
+  const ICONE = 'assets/qr/icone.webp';
+  const ICONES_ABA = { icon: 'assets/qr/icone-32.png', 'apple-touch-icon': 'assets/qr/icone-180.png' };
+  const iconesOriginais = {};
+
+  /** Na tela do QR, a aba e o atalho do celular usam o ícone Vegas QRCode; fora dela, voltam os do sistema */
+  function iconeAba(qr) {
+    Object.keys(ICONES_ABA).forEach((rel) => {
+      const l = document.querySelector(`link[rel="${rel}"]`);
+      if (!l) return;
+      if (!(rel in iconesOriginais)) iconesOriginais[rel] = { href: l.getAttribute('href'), type: l.getAttribute('type') };
+      const o = iconesOriginais[rel];
+      l.setAttribute('href', qr ? ICONES_ABA[rel] : o.href);
+      if (rel === 'icon') { if (qr) l.setAttribute('type', 'image/png'); else if (o.type) l.setAttribute('type', o.type); }
+    });
+  }
+
+  function cleanup() {
+    clearTimeout(timer); timer = null;
+    if (Object.keys(iconesOriginais).length && !location.hash.startsWith('#/qr/')) iconeAba(false);
+  }
 
   function casca(root, conteudo) {
     root.innerHTML = `
@@ -158,6 +177,7 @@
     const c = root._qrCliente || {};
     casca(root, `
       <section class="panel"><div class="panel__body stack">
+        <img class="qrp__icone" src="${ICONE}" alt="Vegas QRCode" width="132" height="132">
         <div class="portal__role">${VG.icon('lock')}Acesso técnico ao cliente</div>
         <h1 class="qrp__nome">${VG.esc(c.fantasia || c.nome)}</h1>
         ${c.fantasia ? `<p class="faint" style="margin:0">${VG.esc(c.nome)}</p>` : ''}
@@ -189,7 +209,8 @@
     const temAcesso = a.usuario || a.senha || a.plataforma;
     const copiar = (k, v) => v ? `<button class="btn btn-ghost btn-icon" data-copy="${k}" title="Copiar" aria-label="Copiar">${VG.icon('copy')}</button>` : '';
     casca(root, `
-      <section class="panel"><div class="panel__body stack">
+      <section class="panel"><div class="panel__body stack qrp__topo">
+        <img class="qrp__icone qrp__icone--mini" src="${ICONE}" alt="Vegas QRCode" width="64" height="64">
         <div class="portal__role">${VG.icon('shield')}Cliente ${VG.esc(c.codigo || '')}</div>
         <h1 class="qrp__nome">${VG.esc(c.fantasia || c.nome)}</h1>
         ${c.fantasia ? `<p class="faint" style="margin:0">${VG.esc(c.nome)}</p>` : ''}
@@ -256,6 +277,7 @@
   }
 
   function renderPublico(root, token) {
+    iconeAba(true);
     carregar(root, token, '');
   }
 

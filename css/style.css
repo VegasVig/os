@@ -1159,3 +1159,6 @@ html.is-saving::after {
   .qrp__row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .qrp__row .kv__k { grid-column: 1 / -1; }
 }
+.qrp__icone { display: block; width: 132px; height: 132px; margin: 0 auto .4rem; border-radius: 22%; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.qrp__topo { position: relative; padding-right: 5.2rem; }
+.qrp__icone--mini { position: absolute; top: 1rem; right: 1.1rem; width: 64px; height: 64px; margin: 0; box-shadow: 0 6px 18px rgba(0,0,0,.4); }

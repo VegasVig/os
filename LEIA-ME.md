@@ -34,6 +34,8 @@ O sistema começa vazio, só com o usuário `supervisora`.
   - **Gerar novo:** cria outro QR e a etiqueta antiga para de funcionar na hora (etiqueta perdida, técnico desligado). **Desativar:** o QR para de funcionar até gerar outro.
   - **Imprimir etiqueta** (80 mm, com logo, nome e código do cliente) ou **Baixar PNG**.
   - **Última manutenção:** a OS mais recente já finalizada pelo técnico (Realizada, Processada ou Reaberta). Não entram Venda, Retirada e OS resolvida por telefone.
+- **Ícone do sistema (Controle de OS):** aba do navegador, app instalado no celular e atalho do iPhone usam a arte "Controle de OS" (pasta `assets/icons`). **Quem já tem o app instalado precisa remover e instalar de novo** para ver o ícone novo; o celular guarda o ícone da instalação.
+- **Ícone Vegas QRCode:** a tela aberta pelo QR mostra o ícone (pasta `assets/qr`) e usa esse ícone na aba do navegador. O resto do sistema continua com os ícones de `assets/icons`. Para trocar o ícone do QR, substitua os arquivos de `assets/qr` mantendo os mesmos nomes (`icone.webp`, `icone-32.png`, `icone-180.png`).
 - **Cadastro do cliente:** novos campos **Local da central**, **Plataforma / app**, **Usuário**, **Senha** e **Observações do acesso**.
   - A senha **não volta para a tela** depois de salva (aparece "Senha salva"). Campo em branco mantém a senha atual; para trocar, digite a nova; para remover, marque **Apagar a senha salva**.
   - Importar clientes CSV e importar backup **não apagam** as senhas já salvas. O backup exportado **não leva as senhas** (elas ficam só na planilha).
