@@ -95,8 +95,6 @@
             <textarea id="lb-motivo" class="textarea" rows="2" maxlength="500" placeholder="Ex.: abrir OS de preventiva; trocar bateria da central">${VG.esc(l ? l.motivo : '')}</textarea></div>
           <div class="field"><label for="lb-rep">Repetir</label>
             <select id="lb-rep" class="select">${Object.keys(REPETIR).map((k) => `<option value="${k}" ${(l ? l.repetir : 'nao') === k ? 'selected' : ''}>${REPETIR[k]}</option>`).join('')}</select></div>
-          <div class="field"><label for="lb-para">Avisar</label>
-            <select id="lb-para" class="select"><option value="eu">Só a mim</option><option value="todas" ${l && l.para === 'todas' ? 'selected' : ''}>Toda a supervisão</option></select></div>
           <p class="hint span-all" style="margin:0">O alerta aparece no horário em qualquer tela do sistema que estiver aberta. Se o sistema estiver fechado, ele aparece assim que você entrar.</p>
         </form>`,
       actions: [
@@ -115,7 +113,7 @@
           const novo = Object.assign(l || { id: VG.uid(), status: 'pendente', historico: [], criadoPor: autor(), criadoEm: new Date().toISOString() }, {
             clienteId: alvo.id, clienteNome: alvo.fantasia || alvo.nome, clienteCodigo: alvo.codigo || '',
             dataHora, motivo: VG.$('#lb-motivo', f).value.trim(),
-            repetir: VG.$('#lb-rep', f).value, para: VG.$('#lb-para', f).value,
+            repetir: VG.$('#lb-rep', f).value, para: 'eu',
           });
           if (l && l.status !== 'pendente') novo.status = 'pendente';
           hist(novo, l ? `Editado: ${VG.fmtDateTime(dataHora)}.` : `Agendado para ${VG.fmtDateTime(dataHora)}.`);
@@ -275,7 +273,7 @@
         <tbody>${itens.map((l) => `
           <tr data-id="${l.id}">
             <td data-label="Dia e hora" class="num">${VG.esc(VG.fmtDateTime(l.dataHora))}</td>
-            <td data-label="Cliente"><span class="strong">${VG.esc(l.clienteNome)}</span><span class="sub">${VG.esc(l.clienteCodigo || '')}${l.para === 'todas' ? ' · toda a supervisão' : ''} · por ${VG.esc(l.criadoPor || '—')}</span></td>
+            <td data-label="Cliente"><span class="strong">${VG.esc(l.clienteNome)}</span><span class="sub">${VG.esc(l.clienteCodigo || '')} · por ${VG.esc(l.criadoPor || '—')}</span></td>
             <td data-label="O que fazer">${VG.esc(l.motivo || '—')}</td>
             <td data-label="Repetir">${VG.esc(REPETIR[l.repetir] || REPETIR.nao)}</td>
             <td data-label="Situação">${situacao(l)}</td>

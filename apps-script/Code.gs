@@ -308,7 +308,7 @@ const ACOES = {
   saveMany(req) {
     sessao_(req, PAPEIS_SUP);
     const col = colValida_(req.col);
-    if (['users', 'config'].indexOf(col) >= 0) throw new Error('Operação não permitida.');
+    if (['users', 'config', 'lembretes'].indexOf(col) >= 0) throw new Error('Operação não permitida.');
     const itens = Array.isArray(req.items) ? req.items : [];
     return comLock_(() => {
       const mapa = {};
@@ -529,7 +529,12 @@ const ACOES = {
       const cfgAtual = config_();
       substituirTudo_('users', users);
       ['tecnicos', 'atividades'].forEach((c) => substituirTudo_(c, Array.isArray(d[c]) ? d[c] : []));
-      if (Array.isArray(d.lembretes)) substituirTudo_('lembretes', d.lembretes); // backup antigo não tem: mantém os atuais
+      if (Array.isArray(d.lembretes)) { // o backup só traz os lembretes de quem exportou: os das outras são mantidos
+        const lemb = {};
+        ler_('lembretes').forEach((l) => (lemb[l.id] = l));
+        d.lembretes.forEach((l) => { if (l && l.id) lemb[l.id] = l; });
+        substituirTudo_('lembretes', Object.keys(lemb).map((k) => lemb[k]));
+      }
       substituirTudo_('clientes', (Array.isArray(d.clientes) ? d.clientes : []).map((c) => protegerCliente_(clientesAtuais[c.id], c, true)));
       // backups antigos não têm a lista de materiais: nesse caso ela é mantida
       if (Array.isArray(d.materiais)) substituirTudo_('materiais', d.materiais);
@@ -1401,11 +1406,11 @@ function verTodas_(u) {
 const LEMB_STATUS_ = ['pendente', 'concluido', 'cancelado'];
 const LEMB_REPETIR_ = ['nao', 'mensal', 'trimestral', 'semestral', 'anual'];
 
-/** Dona do lembrete, supervisão que vê todas, ou lembrete marcado para toda a supervisão */
+/** Lembrete é pessoal: só a dona vê (antigos sem criadoPorId caem no nome de quem criou) */
 function podeVerLembrete_(s, l) {
   if (s.papel !== 'supervisora') return false;
-  if (l.para === 'todas' || !l.criadoPorId || l.criadoPorId === s.userId) return true;
-  return verTodas_(ler_('users').find((x) => x.id === s.userId));
+  if (l.criadoPorId) return l.criadoPorId === s.userId;
+  return norm_(l.criadoPor) === norm_(s.nome);
 }
 
 function prepararLembrete_(s, obj) {
@@ -1419,7 +1424,7 @@ function prepararLembrete_(s, obj) {
     motivo: String(obj.motivo || '').trim().slice(0, 500),
     status: LEMB_STATUS_.indexOf(obj.status) >= 0 ? obj.status : 'pendente',
     repetir: LEMB_REPETIR_.indexOf(obj.repetir) >= 0 ? obj.repetir : 'nao',
-    para: obj.para === 'todas' ? 'todas' : 'eu',
+    para: 'eu',
     historico: (Array.isArray(obj.historico) ? obj.historico : []).slice(-30),
   });
   if (atual) ['criadoPor', 'criadoPorId', 'criadoEm'].forEach((k) => (l[k] = atual[k]));
